@@ -1,0 +1,11 @@
+# Mutable per-run learning logs written by the skills at runtime.
+# Kept on disk (the skills append to them) but not version-controlled —
+# they churn constantly and hold operational run state. Curated
+# memory/LESSONS.md files ARE tracked.
+**/memory/*-log.jsonl
+
+# Local junk
+.DS_Store
+**/node_modules/
+**/__pycache__/
+*.pyc
