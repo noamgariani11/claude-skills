@@ -37,7 +37,7 @@ Three persona subagents (each its own isolated `Agent` subprocess) + technical r
 | Archetype behavior, diversity rules, return-visitor gating | `references/archetypes.md` |
 | Score calibration, evidence rules, confidence tagging, cognitive load | `references/scoring-and-evidence.md` |
 | Chain of Thought format, PULSE, visual hierarchy scoring | `references/chain-of-thought.md` |
-| Browser commands (gstack + Playwright), baseline schema | `references/interaction-protocols.md` |
+| Browser commands (Playwright / `browse` skill), baseline schema | `references/interaction-protocols.md` |
 | Voice rules and weak-vs-strong examples | `references/voice-rules.md` |
 | Report template, in-chat summary, engineering action items | `references/report-template.md` |
 
@@ -108,10 +108,10 @@ If the root redirects to `/login`, `/sign-in`, `/auth`, or similar, OR body cont
 ### 0.4 — Kick off Codex (optional, best-effort)
 
 ```bash
-mkdir -p .gstack/user-test-reports/screenshots
+mkdir -p docs/reports/user-test-reports/screenshots
 _DATE=$(date +%Y%m%d-%H%M%S)
-_REPORT_FILE=".gstack/user-test-reports/user-test-${_DATE}.md"
-_CODEX_OUT=".gstack/user-test-reports/codex-review-${_DATE}.md"
+_REPORT_FILE="docs/reports/user-test-reports/user-test-${_DATE}.md"
+_CODEX_OUT="docs/reports/user-test-reports/codex-review-${_DATE}.md"
 
 if command -v codex >/dev/null 2>&1; then
   echo "CODEX_AVAILABLE"
@@ -146,7 +146,7 @@ Record `codex_status` and `codex_attempts` (the per-attempt model + outcome) in 
 
 ### 0.5 — Browser tooling
 
-Prefer Playwright MCP if available. Otherwise gstack browse. See `references/interaction-protocols.md`.
+Prefer Playwright MCP if available. Otherwise use the `browse` skill. See `references/interaction-protocols.md`.
 
 ### 0.6 — Route discovery
 
@@ -163,8 +163,8 @@ For focus mode: resolve the target and build the focus manifest per `references/
 ### 0.7 — Baseline check (active, not passive)
 
 ```bash
-ls -t .gstack/user-test-reports/baseline.json 2>/dev/null | head -1
-ls -t .gstack/user-test-reports/learnings.md 2>/dev/null | head -1
+ls -t docs/reports/user-test-reports/baseline.json 2>/dev/null | head -1
+ls -t docs/reports/user-test-reports/learnings.md 2>/dev/null | head -1
 ```
 
 Read both if present. Use them to seed this run, not just for "comparison":
@@ -475,7 +475,7 @@ If the user picks "Implement everything" or "Implement P0/P1 only", execute the 
    - Skip "while I'm here" cleanups unless the user explicitly asked.
    - "Comprehensive" means *every flagged finding*, not "every place I have an opinion about."
 
-6. **Verify each fix before moving on.** For UI fixes, exercise the flow in a browser (Playwright MCP / gstack browse). For API fixes, run the original adversarial probe and confirm the response code/shape changed as expected. For shared-helper fixes, run `pnpm exec tsc --noEmit` and `pnpm test` to catch type/test fallout. **Don't claim a fix is done because it compiles.**
+6. **Verify each fix before moving on.** For UI fixes, exercise the flow in a browser (Playwright MCP / `browse` skill). For API fixes, run the original adversarial probe and confirm the response code/shape changed as expected. For shared-helper fixes, run `pnpm exec tsc --noEmit` and `pnpm test` to catch type/test fallout. **Don't claim a fix is done because it compiles.**
 
 7. **Run the project's quality gates at the end.** `pnpm lint && pnpm exec tsc --noEmit && pnpm test`. If anything fails, fix it before reporting done. **Never skip hooks.**
 

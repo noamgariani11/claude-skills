@@ -83,9 +83,9 @@ This gives us the full surface map. Personas will not cover all routes — they 
 ### 0.5 — Setup output directory
 
 ```bash
-mkdir -p .gstack/user-test-2-reports
+mkdir -p docs/reports/user-test-2-reports
 _DATE=$(date +%Y%m%d-%H%M%S)
-_REPORT_FILE=".gstack/user-test-2-reports/journey-${_DATE}.md"
+_REPORT_FILE="docs/reports/user-test-2-reports/journey-${_DATE}.md"
 ```
 
 ---

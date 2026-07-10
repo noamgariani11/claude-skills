@@ -1,70 +1,43 @@
 # Interaction Protocols
 
-How to drive the browser. Prefer Playwright MCP if available, otherwise fall back to gstack browse.
+How to drive the browser. Use the `browse` skill, which drives **Playwright MCP**.
 
 ---
 
 ## Detecting What's Available
 
 ```bash
-# Check for Playwright MCP tools in the session
-# If mcp__playwright__* is available, use those — they are the primary driver.
-
-# Otherwise, locate gstack browse binary:
-_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-B=""
-[ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
-[ -z "$B" ] && B=~/.claude/skills/gstack/browse/dist/browse
-[ -x "$B" ] && echo "BROWSE_READY: $B" || echo "BROWSE_NEEDS_SETUP"
+# The browser driver is Playwright MCP, invoked via the `browse` skill.
+# If mcp__playwright__* tools are present in the session, they are the driver.
+# If they are NOT present, do a text-only analysis from source code and flag the
+# limitation loudly in the report. Do not try to install or launch any other browser.
 ```
 
-If browse needs setup: `cd ~/.claude/skills/gstack && ./setup`. If that fails, do a text-only analysis from source code and flag the limitation loudly in the report.
+Do not hold a second persistent Chromium alongside Playwright's — a redundant long-lived
+browser process has crashed WSL2/WSLg VMs before. Playwright MCP manages one browser; use it.
 
 ---
 
-## gstack browse ($B) — Command Reference
+## Browser Command Reference (Playwright MCP)
 
-```bash
-$B viewport 375x812           # Set viewport (FIRST command per persona)
-$B goto http://localhost:3000 # Navigate
-$B snapshot -i                # Interactive elements only (Skimmer)
-$B snapshot                   # Full tree (Careful Reader)
-$B snapshot -i -C             # Interactive + cursor-interactive (Mobile Tapper)
-$B snapshot -D                # Diff against previous snapshot
-$B fill @e3 "realistic input" # Fill form field
-$B click @e5                  # Click element
-$B scroll                     # Scroll to bottom
-$B console --errors           # Check for JS errors
-$B network                    # Failed / slow / 4xx / 5xx requests
-$B perf                       # Load timing
-$B screenshot screenshots/t1-01-landing.png
-$B responsive screenshots/t1-responsive   # Mobile + tablet + desktop
-$B links                      # List all links (Careful Reader uses this)
-$B press Tab                  # Keyboard navigation test
-$B back                       # Browser back button
-$B reload                     # Refresh
-$B js "expression"            # Arbitrary JS eval in page
-$B css "selector" "property"  # Read CSS value
-```
+Map the intent you want to the Playwright MCP tool. Set the viewport first per persona, then
+navigate, then snapshot before interacting; re-snapshot after any navigation or DOM change.
 
----
+| Intent | Playwright MCP tool |
+|--------|---------------------|
+| Set viewport (FIRST per persona, e.g. 375x812) | `mcp__playwright__browser_resize` |
+| Navigate (e.g. http://localhost:3000) | `mcp__playwright__browser_navigate` |
+| Snapshot DOM / accessibility tree | `mcp__playwright__browser_snapshot` |
+| Click element | `mcp__playwright__browser_click` |
+| Fill form field | `mcp__playwright__browser_fill_form` |
+| Screenshot (e.g. screenshots/t1-01-landing.png) | `mcp__playwright__browser_take_screenshot` |
+| Press key (e.g. Tab for keyboard nav) | `mcp__playwright__browser_press_key` |
+| Console messages / JS errors | `mcp__playwright__browser_console_messages` |
+| Network requests (failed / slow / 4xx / 5xx) | `mcp__playwright__browser_network_requests` |
+| Browser back | `mcp__playwright__browser_navigate_back` |
+| Arbitrary JS eval in page | `mcp__playwright__browser_evaluate` |
 
-## Playwright MCP — Command Equivalents
-
-If `mcp__playwright__*` is available, prefer these:
-
-- `mcp__playwright__browser_resize` → viewport
-- `mcp__playwright__browser_navigate` → goto
-- `mcp__playwright__browser_snapshot` → snapshot
-- `mcp__playwright__browser_click` → click
-- `mcp__playwright__browser_fill_form` → fill
-- `mcp__playwright__browser_take_screenshot` → screenshot
-- `mcp__playwright__browser_press_key` → press
-- `mcp__playwright__browser_console_messages` → console
-- `mcp__playwright__browser_navigate_back` → back
-- `mcp__playwright__browser_evaluate` → js eval
-
-Use whichever is available. Do NOT mix the two within a single persona session.
+For responsive checks, resize to mobile / tablet / desktop widths and screenshot each.
 
 ---
 

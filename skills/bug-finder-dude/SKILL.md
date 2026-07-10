@@ -150,7 +150,7 @@ If it diverges from stated intent and you can prove it, it's a bug. Log it.
 - `/bug-finder-dude --diff` — only hunt in files changed vs base branch. Browser
   question still fires.
 - `/bug-finder-dude --triage` — re-read the prior report at
-  `.gstack/bugs/latest.md`, mark each finding as NEW / PERSISTING / FIXED
+  `docs/reports/bugs/latest.md`, mark each finding as NEW / PERSISTING / FIXED
   against the current code, produce a fresh report. Browser question still fires.
 
 The browser question is **mandatory** (unless the user clearly pre-specified, e.g.
@@ -173,7 +173,7 @@ Single message, parallel:
   to know the change surface
 - `Glob` all API routes, page routes, client hooks, repositories, migrations
 - Probe for a live dev server on common ports (3000, 5173, 8080, 8000, 4000)
-- Read the last bug report, if any, from `.gstack/bugs/*.md` to enable
+- Read the last bug report, if any, from `docs/reports/bugs/*.md` to enable
   NEW / PERSISTING / FIXED tagging
 
 Build a mental map of: frameworks, auth model, data stores, external
@@ -382,9 +382,9 @@ mention the secondary in `Also touches:`.
 
 ### Phase 5 — Deliver the report
 
-Write to `.gstack/bugs/YYYY-MM-DD-HHMM.md` (create the directory if missing)
-and update `.gstack/bugs/latest.md` as a symlink-or-copy of the most recent.
-Also write `.gstack/bugs/latest.json` — machine-readable list:
+Write to `docs/reports/bugs/YYYY-MM-DD-HHMM.md` (create the directory if missing)
+and update `docs/reports/bugs/latest.md` as a symlink-or-copy of the most recent.
+Also write `docs/reports/bugs/latest.json` — machine-readable list:
 `[{ id, severity, title, file, line, owner, status }]` — for tracking
 trends and for `--triage` on the next run.
 
@@ -514,7 +514,7 @@ orchestrator hands it off.
 ### Phase 7 — Triage mode (`--triage`)
 
 When re-run against a prior report:
-1. Read `.gstack/bugs/latest.md` and `.gstack/bugs/latest.json`.
+1. Read `docs/reports/bugs/latest.md` and `docs/reports/bugs/latest.json`.
 2. For each prior finding: re-run its repro. Mark as:
    - **FIXED** — repro no longer reproduces, and you can see the code change
      that addresses it (cite the commit if available).
@@ -527,7 +527,7 @@ When re-run against a prior report:
 ## Hard rules
 
 1. **Zero fixes.** You do not `Edit`, `Write` to app code, or open PRs.
-   You only write to `.gstack/bugs/*` and `scripts/repro-*.sh`. If you
+   You only write to `docs/reports/bugs/*` and `scripts/repro-*.sh`. If you
    find a one-line fix that's tempting, still don't — hand it to the
    owner. The skill's value is containment.
 2. **Evidence or drop.** Every finding carries repro + artifact. Vibes-only
@@ -585,7 +585,7 @@ Use `AskUserQuestion` with:
   1. `label: "Code + browser (full sweep)"` — `description: "Static analysis, subagent code review, curl contracts, AND Playwright live-browser probes (route crawl, form fuzz, responsive, console/network). Slowest, most thorough. Requires a dev server and a free Playwright profile."`
   2. `label: "Code only (fast)"` — `description: "Static analysis, subagent code review, tsc/lint/tests, curl contracts. Skips Playwright. ~3x faster, catches most bugs, misses client-side hydration / visual / console / INP issues."`
   3. `label: "Browser only"` — `description: "Skip static analysis; Playwright crawl + console/network + form fuzz only. Use when the static surface was reviewed recently and you just want a live pass."`
-  4. `label: "Triage only"` — `description: "Re-verify the prior .gstack/bugs/latest.md report against current code (FIXED / PERSISTING / MORPHED). No fresh hunting. Quick."`
+  4. `label: "Triage only"` — `description: "Re-verify the prior docs/reports/bugs/latest.md report against current code (FIXED / PERSISTING / MORPHED). No fresh hunting. Quick."`
 
 Skip the question **only** if the user's prompt was explicit — e.g. they typed
 "static only", "no browser", "code only", "use playwright too", "full sweep

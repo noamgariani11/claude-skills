@@ -155,8 +155,8 @@ highest-impact ones first, every run.
 - **Apply when:** Any authenticated hunt where curl/tool session transfer misbehaves.
 - **Provenance:** added 2026-05-27 · supporting runs: 1 · contradicting: 0
 
-### L-007 · gstack `browse` on WSLg: stay headed, JS-click to bypass timeouts, filter output narrowly   [conf: med] · [tool]
-- **Do:** The 2FA'd session lives only in the **headed** profile (`~/.gstack/chromium-profile`); switching to
+### L-007 · headed `browse` on WSLg: stay headed, JS-click to bypass timeouts, filter output narrowly   [conf: med] · [tool]
+- **Do:** The 2FA'd session lives only in the **headed** profile (`~/.claude/skills-data/chromium-profile`); switching to
   headless or `disconnect` drops the session cookie (forces re-login + 2FA). Stay headed once authed. When
   `click` times out (5s actionability on flaky WSLg render), JS-click:
   `js "[...document.querySelectorAll('button')].find(b=>/Add app/i.test(b.textContent)).click()"`. When parsing
@@ -164,7 +164,7 @@ highest-impact ones first, every run.
   substrings like "send"/"append" and blanks the result.
 - **Why / evidence:** braze 2026-05-27 — separate headed/headless profiles cost a re-login loop; "Add app"
   click timed out until JS-click; `grep -iv END` silently blanked valid JSON for ~3 steps.
-- **Apply when:** Driving gstack `browse` headed on WSL2/WSLg.
+- **Apply when:** Driving the `browse` skill headed on WSL2/WSLg.
 - **Provenance:** added 2026-05-27 · supporting runs: 1 · contradicting: 0
 
 ### L-008 · Braze sandbox: these surfaces are hardened (start elsewhere on resume)   [conf: med] · [class/recon]

@@ -145,18 +145,18 @@ Establish: what does this app do, what vocabulary does it assume, who is the app
 ### 0.4 — Setup output
 ```bash
 _DATE=$(date +%Y%m%d-%H%M%S)
-mkdir -p .gstack/user-test-massive-reports
-_REPORT_FILE=".gstack/user-test-massive-reports/massive-${_DATE}.md"
-_FIXES_FILE=".gstack/user-test-massive-reports/fix-tickets-run${RUN_NUMBER}.md"
-_BASELINE_FILE=".gstack/user-test-massive-reports/baseline.json"
-_LEARNINGS_FILE=".gstack/user-test-massive-reports/learnings.md"
+mkdir -p docs/reports/user-test-massive-reports
+_REPORT_FILE="docs/reports/user-test-massive-reports/massive-${_DATE}.md"
+_FIXES_FILE="docs/reports/user-test-massive-reports/fix-tickets-run${RUN_NUMBER}.md"
+_BASELINE_FILE="docs/reports/user-test-massive-reports/baseline.json"
+_LEARNINGS_FILE="docs/reports/user-test-massive-reports/learnings.md"
 ```
 
 ### 0.5 — Load Prior State
 
 ```bash
-cat .gstack/user-test-massive-reports/baseline.json 2>/dev/null || echo "NO_BASELINE"
-cat .gstack/user-test-massive-reports/learnings.md 2>/dev/null || echo "NO_LEARNINGS"
+cat docs/reports/user-test-massive-reports/baseline.json 2>/dev/null || echo "NO_BASELINE"
+cat docs/reports/user-test-massive-reports/learnings.md 2>/dev/null || echo "NO_LEARNINGS"
 ```
 
 **Adaptive task allocation (proportional formula):**

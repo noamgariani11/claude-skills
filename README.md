@@ -20,7 +20,7 @@ and version-controlled here, yet usable from any working directory.
 
 ## Skills in this repo
 
-These are my own authored skills (the gstack package and Claude Code plugins are
+These are my own authored skills (Claude Code plugins are
 intentionally **not** included — they manage and update themselves separately):
 
 - Engineering modes: `back-end-dude`, `front-end-dude`, `designer-dude`,

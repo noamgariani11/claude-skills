@@ -50,8 +50,8 @@ Look for:
 
 Also check for office-hours output:
 ```bash
-source <(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
-ls ~/.gstack/projects/$SLUG/*office-hours* 2>/dev/null | head -3
+SLUG=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+ls ~/.claude/skills-data/projects/$SLUG/*office-hours* 2>/dev/null | head -3
 ```
 
 If an office-hours doc exists, read it — the product mission and user context are pre-filled.

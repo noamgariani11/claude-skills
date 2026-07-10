@@ -37,8 +37,8 @@ Run this silently before any user interaction. Do not greet the user or ask any 
 until after this phase completes.
 
 ```bash
-mkdir -p ~/.gstack/flight-finder/routes
-cat ~/.gstack/flight-finder/memory.json 2>/dev/null || echo "__NO_MEMORY__"
+mkdir -p ~/.claude/skills-data/flight-finder/routes
+cat ~/.claude/skills-data/flight-finder/memory.json 2>/dev/null || echo "__NO_MEMORY__"
 ```
 
 ---
@@ -439,7 +439,7 @@ is the single biggest source of speed and cost savings on repeat searches.
 ```bash
 ORIGIN="[IATA code from Phase 1]"
 DEST="[IATA code from Phase 1]"
-CACHE_FILE="$HOME/.gstack/flight-finder/routes/${ORIGIN}-${DEST}.json"
+CACHE_FILE="$HOME/.claude/skills-data/flight-finder/routes/${ORIGIN}-${DEST}.json"
 cat "$CACHE_FILE" 2>/dev/null || echo "__NO_ROUTE_CACHE__"
 ```
 
@@ -667,7 +667,7 @@ without asking the user — it is a background operation.
 ### Step 1 — Read current memory (or start fresh)
 
 ```bash
-cat ~/.gstack/flight-finder/memory.json 2>/dev/null || echo "{}"
+cat ~/.claude/skills-data/flight-finder/memory.json 2>/dev/null || echo "{}"
 ```
 
 ### Step 2 — Merge learned data
@@ -763,7 +763,7 @@ Only write fields that were actually researched this run. Do not touch fields wh
 ### Step 3 — Write the file
 
 ```bash
-cat > ~/.gstack/flight-finder/memory.json << 'MEMORY_EOF'
+cat > ~/.claude/skills-data/flight-finder/memory.json << 'MEMORY_EOF'
 [full merged JSON here]
 MEMORY_EOF
 ```
@@ -771,7 +771,7 @@ MEMORY_EOF
 Also write any updated route cache:
 
 ```bash
-cat > ~/.gstack/flight-finder/routes/[ORIGIN]-[DEST].json << 'ROUTE_EOF'
+cat > ~/.claude/skills-data/flight-finder/routes/[ORIGIN]-[DEST].json << 'ROUTE_EOF'
 [route cache JSON here]
 ROUTE_EOF
 ```
@@ -1330,7 +1330,7 @@ Get Away Plus and above are refundable. No basic economy equivalent exists.
 
 ### Memory Schema Reference
 
-The canonical shape of `~/.gstack/flight-finder/memory.json`. Use this as the
+The canonical shape of `~/.claude/skills-data/flight-finder/memory.json`. Use this as the
 authoritative template when writing the file. All fields are optional — write only
 what you know. Use `null` for unknown fields.
 
@@ -1410,7 +1410,7 @@ what you know. Use `null` for unknown fields.
 }
 ```
 
-Route cache files live separately at `~/.gstack/flight-finder/routes/[ORIGIN]-[DEST].json`:
+Route cache files live separately at `~/.claude/skills-data/flight-finder/routes/[ORIGIN]-[DEST].json`:
 
 ```json
 {
@@ -1441,7 +1441,7 @@ Route cache files live separately at `~/.gstack/flight-finder/routes/[ORIGIN]-[D
   do not reuse DFW-JFK data for return flights (aircraft and nonstop carriers are the same,
   but SeatGuru notes and on-time stats are flight-number specific)
 - If the user explicitly says "don't remember my preferences," delete the memory file:
-  `rm ~/.gstack/flight-finder/memory.json`
+  `rm ~/.claude/skills-data/flight-finder/memory.json`
 
 ---
 

@@ -504,10 +504,10 @@ change. `--dast` (or `--sqli`) adds the **state-touching** sqlmap SQL-injection 
 `triage-summary.md`. Record the exact command + tool versions (`nuclei -version`, `ffuf -V`)
 to the journal for reproducibility.
 
-**Our own Playwright engine is the ONLY browser — the gstack `browse` skill is banned in this flow.**
-The gstack `browse` daemon held a second persistent Chromium in memory and hard-crashed the WSL VM, and
+**Our own Playwright engine is the ONLY browser — the general `browse` skill is banned in this flow.**
+A second persistent Chromium alongside our crawler has held a browser in memory and hard-crashed the WSL VM, and
 its cleanup (`pkill -f browse`) killed the whole session (see footgun below). Do **not** invoke the
-`browse` skill, `browse connect/disconnect`, or any gstack browser here. All browser-driven work —
+`browse` skill or any other browser here. All browser-driven work —
 authenticated crawl, JS-rendered endpoint discovery, and PoC-evidence screenshots — goes through our
 read-only Playwright tool, `research/tools/browser_crawl.py`:
 

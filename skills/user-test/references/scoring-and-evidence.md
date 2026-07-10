@@ -93,7 +93,7 @@ Live-tester findings without code-level claims are exempt — a Skimmer can say 
 
 ### Rule 5 — Match observation against the prior `learnings.md` suppression list
 
-Phase 0.7 loads `.gstack/user-test-reports/learnings.md`. If the current finding matches a prior `verified-false-positive` entry (fuzzy title match), suppress it OR explicitly re-prove it. Suppress format in the report:
+Phase 0.7 loads `docs/reports/user-test-reports/learnings.md`. If the current finding matches a prior `verified-false-positive` entry (fuzzy title match), suppress it OR explicitly re-prove it. Suppress format in the report:
 
 ```
 [SUPPRESSED — verified-false-positive in run YYYY-MM-DD]: [original finding]

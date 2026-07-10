@@ -98,7 +98,7 @@ for port in 3000 5173 8080 8000 4000 8787; do curl -sf -m 2 -o /dev/null "http:/
 ```
 If none are live and mode is `full` or `stress`: offer to run `pnpm dev &` in background, or explicitly downgrade to `--static` and record that in the report header.
 
-**Read the prior report.** `Glob(pattern=".gstack/security/*.md")` and `Glob(pattern="SECURITY_REPORT.md")`. If a prior report exists, `Read` the most recent. Later, tag each finding as `NEW`, `PERSISTING`, or `FIXED` relative to it.
+**Read the prior report.** `Glob(pattern="docs/reports/security/*.md")` and `Glob(pattern="SECURITY_REPORT.md")`. If a prior report exists, `Read` the most recent. Later, tag each finding as `NEW`, `PERSISTING`, or `FIXED` relative to it.
 
 ## Phase 0.5 — Scope gate
 
@@ -340,10 +340,10 @@ If the app calls an LLM:
 ## Phase 15 — Write the report
 
 Report path (preference order):
-1. `.gstack/security/YYYY-MM-DD-HHMM.md` — default. Create the directory if missing. Preserves history for regression tracking.
-2. `SECURITY_REPORT.md` — fallback when `.gstack/` isn't used in this repo.
+1. `docs/reports/security/YYYY-MM-DD-HHMM.md` — default. Create the directory if missing. Preserves history for regression tracking.
+2. `SECURITY_REPORT.md` — fallback when `docs/reports/` isn't used in this repo.
 
-Also write `.gstack/security/latest.json` — machine-readable findings list: `[{ id, severity, title, file, line, status }]` — for CI gating and trend tracking across runs.
+Also write `docs/reports/security/latest.json` — machine-readable findings list: `[{ id, severity, title, file, line, status }]` — for CI gating and trend tracking across runs.
 
 Format:
 
