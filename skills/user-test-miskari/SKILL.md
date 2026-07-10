@@ -1,11 +1,13 @@
 ---
 name: user-test-miskari
 description: |
-  Miskari-specialized user testing. Six domain-expert personas — commercial property
+  Miskari-specialized user testing. Eight domain-expert personas — commercial property
   manager, tax protest specialist, residential landlord, passive investor, small business
-  owner, and property accountant — each with real CRE vocabulary and professional
-  skepticism. Tests the critical real-estate workflows (protest end-to-end, property
-  onboarding, lease renewal, vendor radar, bank reconciliation, portfolio dashboard)
+  owner, property accountant, maintenance coordinator, and leasing/asset manager — each
+  with real CRE vocabulary and professional skepticism. Tests the critical real-estate
+  workflows (protest end-to-end, property onboarding, lease renewal, vendor radar, bank
+  reconciliation, portfolio dashboard, maintenance dispatch, tenant screening/applications,
+  deal underwriting, and the external token surfaces tenants/vendors/lenders actually see)
   against what a paying professional would actually expect. Includes domain accuracy
   checks (is the NOI math right? do the comps match DCAD? is the cap rate credible?),
   comparison to competitor tools (AppFolio, Buildium, Yardi, Excel), expert feature-gap
@@ -31,13 +33,13 @@ Load specialized references from `references/` on demand. Do not read all at onc
 
 | When you need | Load |
 |---|---|
-| All six persona cards + diversity rules + focus routing | `references/personas.md` |
+| All eight persona cards (A–H) + diversity rules + focus routing | `references/personas.md` |
 | Critical workflow protocols + domain accuracy checks | `references/workflows.md` |
 | Domain trust signals, competitor comparisons, professional skepticism triggers | `references/domain-trust.md` |
 | Score calibration, evidence rules, confidence tagging, cognitive load | `/home/drago/.claude/skills/user-test/references/scoring-and-evidence.md` |
 | Chain of Thought format, PULSE | `/home/drago/.claude/skills/user-test/references/chain-of-thought.md` |
 | Report template, in-chat summary, engineering action items | `/home/drago/.claude/skills/user-test/references/report-template.md` |
-| Browser commands (Playwright / gstack), baseline schema | `/home/drago/.claude/skills/user-test/references/interaction-protocols.md` |
+| Browser commands (Playwright / `browse` skill), baseline schema | `/home/drago/.claude/skills/user-test/references/interaction-protocols.md` |
 
 ---
 
@@ -72,37 +74,82 @@ Operating principles:
 
 ### 0.1 — Infer mode
 
-Same rules as `/user-test`. If a flag is passed (`--diff`, `--focus <page>`, `--flow <workflow-name>`), apply it. `--flow` is Miskari-specific: restrict testing to one of the six critical workflows (protest, onboarding, lease-renewal, vendor-radar, reconciliation, dashboard).
+Same rules as `/user-test`. If a flag is passed (`--diff`, `--focus <page>`, `--flow <workflow-name>`), apply it. `--flow` is Miskari-specific: restrict testing to one of the **ten** critical workflows defined in `references/workflows.md` — `protest`, `onboarding`, `lease-renewal`, `vendor-radar`, `reconciliation`, `dashboard`, `maintenance` (WF7), `tenant-application` (WF8), `underwriting` (WF9), `external-token` (WF10). Workflows 7–10 cover the clusters that were untested through the first four runs (maintenance/ops, tenant lifecycle, deals, and the external token surfaces) — they are where latent Criticals hide, so keep them targetable.
 
-### 0.2 — Detect URL
+### 0.2 — Detect URL AND verify it is actually Miskari
+
+**Do NOT trust the first port that answers.** Across runs, unrelated apps have squatted the common ports (:3000 has been "Sheevook"/pegazosdetailing, :3001 "marketing-helper"), and their login pages match a naive `grep "Sign in"`. Miskari has been found on 3000, 3001, and 3002 on different runs.
 
 ```bash
-for port in 3000 3001 4000 5173 8080; do
+for port in 3000 3001 3002 4000 5173 8080; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$port" 2>/dev/null)
-  [ "$code" != "000" ] && echo "FOUND: http://localhost:$port" && break
+  [ "$code" != "000" ] && echo "PORT $port answers ($code)" || continue
+  # Brand-check: only Miskari carries the "miskari" token in its chrome/title.
+  body=$(curl -s -L "http://localhost:$port/login" 2>/dev/null)
+  if echo "$body" | grep -qiE "sheevook|pegazos|marketing.?helper"; then
+    echo "  -> IMPOSTOR on $port, skipping"; continue
+  fi
+  if echo "$body" | grep -qi "miskari"; then
+    echo "  -> MISKARI CONFIRMED: http://localhost:$port"; MB_BASE="http://localhost:$port"; break
+  fi
+  echo "  -> answers but no Miskari brand marker; keep looking"
 done
 ```
 
-Accept user-provided URL first. Fall back to dev server. If nothing resolves, tell the user to run `pnpm dev` or `pnpm start:dev` and stop.
+Accept a user-provided URL first (still brand-check it). If no port is confirmed Miskari, start it yourself on a free alt port — `PORT=3002 pnpm dev` (boots in ~3s against Neon) — then re-brand-check. Only if that fails, tell the user to run `pnpm start:dev` and stop. Export the confirmed URL as `MB_BASE` for the harness; the `mblib.cjs` `brandCheck(page)` helper double-confirms inside each agent.
 
 ### 0.3 — Tax season detection (adjusts P0 priorities for the run)
 
+**Miskari is no longer Texas/DCAD-only.** The codebase now carries multiple appraisal jurisdictions (`appraisal-counties.ts` `SUPPORTED_COUNTIES`, plus `alameda.ts`, `clark.ts`, `ccad.ts`, `cad-portals-registry.ts`, `appeal-window-overrides.ts`, `/settings/appeal-windows`). A Clark County (NV) or Alameda (CA) portfolio has a **different appeal season** than the Texas May-15 rule. So derive the season from the *seeded properties' actual appeal windows*, not the calendar month alone.
+
+Primary signal — the app's own deadline computation (`appeal-deadline-status.ts` / `/settings/appeal-windows`): for the seeded portfolio, is any property's protest/appeal window currently OPEN (deadline in the future and the notice/window has started)?
+
 ```bash
+# Fallback heuristic ONLY for a TX-only portfolio when the app signal is unavailable.
 _MONTH=$(date +%m)
-if [ "$_MONTH" -ge 1 ] && [ "$_MONTH" -le 5 ]; then
-  echo "TAX_SEASON=true"
-  _TAX_SEASON=true
-else
-  echo "TAX_SEASON=false"
-  _TAX_SEASON=false
-fi
+[ "$_MONTH" -ge 1 ] && [ "$_MONTH" -le 5 ] && echo "TX_CALENDAR_SEASON=true" || echo "TX_CALENDAR_SEASON=false"
 ```
 
-**If `_TAX_SEASON=true`:** protest deadline accuracy is P0 for this run — it gates everything else. Any wrong deadline shown on a Texas property blocks the entire protest workflow for every professional who relies on it. The domain gate in Phase 2A automatically fails on a wrong deadline during tax season, regardless of other findings.
+Set `_TAX_SEASON=true` if **any** seeded property is inside its own open appeal window (per the app's per-county rule), else false. For a Texas-only seed with no county override, this collapses to the Jan–May heuristic above.
 
-**If `_TAX_SEASON=false`:** protest deadline accuracy is still important but the primary P0 shifts to bill/lease deadline accuracy (the non-seasonal workflows dominate day-to-day use).
+**If `_TAX_SEASON=true`:** protest/appeal deadline accuracy is P0 — it gates everything. Any wrong deadline shown on a property whose window is open blocks the protest workflow for every professional who relies on it. The domain gate in Phase 2A auto-fails on a wrong deadline during an open window, regardless of other findings.
 
-Log the season determination at the start of the run: `"Running in [tax season / off-season] mode — [month]. P0 priorities: [list]."`
+**If `_TAX_SEASON=false`:** deadline accuracy is still checked but the primary P0 shifts to bill/lease/contract deadline accuracy (the non-seasonal workflows dominate day-to-day use).
+
+Log the determination: `"Running in [tax season / off-season] mode — [seeded counties + which windows are open]. P0 priorities: [list]."`
+
+### 0.35 — Environment health gate (run BEFORE fielding any persona)
+
+Multiple runs have each re-derived these the hard way. Do them up front — a contaminated environment produces phantom "Critical" findings that are really infra drift.
+
+1. **Pending-migration check.** Run 2's dominant "Critical" (mass 500s on /reports, /bills, /schedule, /properties/[id]) was the app being 3 migrations ahead of the DB — the regenerated Prisma client selected columns the DB lacked.
+   ```bash
+   cd /home/drago/miskari && pnpm exec prisma migrate status
+   ```
+   If pending: apply with the user's consent (`pnpm db:deploy` — additive, no reset) or stop. Do NOT field personas against a drifted DB.
+
+2. **RLS role check** — the linchpin of the run-3 Critical. The runtime role has historically been `neondb_owner` with `rolbypassrls=true`, which makes FORCE RLS a silent no-op; isolation then rests entirely on the app-layer `WHERE organizationId`.
+   ```sql
+   select rolbypassrls from pg_roles where rolname = current_user;
+   ```
+   If `true`, note it in the baseline as the residual deployment risk and make the Phase 2D aggregation-leak sweep mandatory (it is anyway). If it flips to `false`, record that the NOBYPASSRLS switch finally shipped — that is a defense-in-depth win worth calling out.
+
+3. **Harness bootstrap — the three committed scripts (do NOT rebuild from scratch).** The Playwright harness lives in the repo at `scripts/mblib.cjs`, `scripts/mbcapture.cjs`, `scripts/mbprobe.cjs`. Prior runs wasted time re-deriving this because it used to be an ephemeral scratchpad harness; it is now committed and stable. Use it as-is:
+   - **`mblib.cjs`** — core lib. Exports `launch()`, `newContext(browser, {viewport, noAuth})`, `brandCheck(page)` (throws on impostor markers, returns true on "miskari" — the per-agent double-confirm), `login(email, password)`, plus `BASE`/`AUTH`/`PW`. It resolves `playwright-core@1.61.1` from the pnpm store, launches the cached Chromium (`~/.cache/ms-playwright/chromium-1228`) with the WSL sysroot (`~/.cache/miskari-browser-sysroot/.../x86_64-linux-gnu`) on `LD_LIBRARY_PATH`, defaults `MB_BASE=:3002`, and defaults `MB_AUTH` under `~/.cache` (survives `/compact` wiping `/tmp`). CLI: `node scripts/mblib.cjs login [email] [password]`.
+   - **`mbcapture.cjs`** — `node scripts/mbcapture.cjs <outdir> <route…>`: per-route innerText + console errors/warnings + failed requests + ≥400 responses + screenshot, writes `_summary.json`. Uses `waitUntil:domcontentloaded` (see lesson below).
+   - **`mbprobe.cjs`** — `node scripts/mbprobe.cjs <route…>`: HTTP status / redirect / body-hint sweep for the foreign-ID 404 sweep and token surfaces.
+   - Export the confirmed URL: `export MB_BASE="http://localhost:<verified-port>"` (from 0.2) and optionally `export MB_AUTH="$HOME/.cache/miskari-user-test/auth-state.json"`.
+   - Login is a server action against Neon and is **slow (~15–30s, not 2s)**. `login()` already polls until the URL leaves `/login` before saving `storageState` — do not shorten its wait.
+   - If Chromium libs are missing (fresh box): `apt-get download` + `dpkg-deb -x` libnss3/libnspr4/libasound2t64 into `~/.cache/miskari-browser-sysroot` (no passwordless sudo in this WSL env). The sysroot usually already exists.
+
+4. **Recurring harness lessons — codified so you don't re-derive them (each cost a prior run real time).**
+   - **Never `waitUntil:networkidle`.** Streaming routes (all token surfaces, `/tax/preflight`) never go idle → false 30–45s "hangs" that get misfiled as reliability bugs (a persona false-flagged `/tax/preflight` this way). Use `domcontentloaded` + a fixed post-load wait (both scripts do). A route is only "slow" if a WARM second hit still exceeds a few seconds.
+   - **Warm every route before a stress test.** A cold concurrent round shows non-200s that are Turbopack compile timeouts, NOT 500s. Always warm first and log the actual status codes; don't file cold-compile non-200s as reliability Criticals.
+   - **Don't read seed reality from the DB.** Neon direct-`pg`/CLI queries hang from bash in this env, and the user has declined a standalone DB seedcheck script mid-run. Derive seed facts from the app UI surfaces + prior `baseline.json`, not a raw DB script.
+   - **Persona-agent liveness ≠ file mtime.** Agents block on slow `mbcapture` calls, so transcript-file mtime going idle does not mean the agent finished. Wait on a "final report" content marker in the agent's output, not mtime.
+   - **MCP Playwright may be unconnected** in a given session — the node harness above is the fallback and is always available.
+
+5. **Adversarial-agent budget.** The Phase 2D agent has been killed mid-run by the account spend limit in 2 of 4 runs, leaving residue plants. Give it an explicit ordering so the highest-value work happens first even if it dies: **(a) aggregation-leak sweep (read-only) → (b) boundary/injection probes → (c) any write-based traps LAST, with cleanup guaranteed after each plant.**
 
 ### 0.4 — Auth wall + seed data check
 
@@ -113,34 +160,52 @@ curl -s "$URL" 2>/dev/null | grep -Ei "sign[ -]?in|log[ -]?in|please authenticat
 
 Miskari is always auth-gated. Ask the user for credentials. The default dev seed is `dev@example.com` / `devpassword` (org: "dev") — confirm whether to use those or a production-like dataset.
 
-**Seed data quality check.** Domain-expert personas cannot meaningfully assess the protest workflow without real-looking assessment data, or the reconciliation flow without transactions. Before persona design, ask:
-- Does the test environment have at least 3 properties with assessment records?
-- Are there any active leases with upcoming renewals?
-- Is the reconciliation view connected to Plaid (or has test transactions)?
+**Seed prerequisite gate (machine-checkable, per workflow).** For three of four runs, half the persona roster (James/reconciliation, Diane/residential renewal, comps) was un-fieldable because the base seed provisions no bank transactions, no near-term residential renewal, and an empty ParcelCache. Stop asking the user three fuzzy questions — query the DB and decide fielded/skipped per workflow mechanically.
 
-If seed data is thin, note which workflows will be incomplete. Do not test the protest workflow against a portfolio with zero assessment records — that is a setup failure, not a product finding.
+Run `pnpm seed:user-test` first (idempotent, additive, Dev-Org-only — provisions exactly the chronically-missing fixtures: a Plaid item + 6 bank txns, a residential lease expiring in 45d, 5 ParcelCache office comps, and Unit rows). Then evaluate each workflow's prerequisite:
 
-### 0.5 — Route discovery
+| Workflow | Prerequisite (query Dev Org) | If unmet |
+|---|---|---|
+| Protest / appeal | ≥1 property with an assessment whose appeal window is known | Skip — setup failure, not a product finding |
+| Onboarding | always fieldable (form-driven) | — |
+| Lease renewal (commercial) | ≥1 active lease `endDate ≤ 90d` | Skip renewal step, test lease detail only |
+| Lease renewal (residential) | ≥1 active lease on a residential property `endDate ≤ 90d` | Skip Diane's renewal goal |
+| Vendor radar | ≥1 contract with `endDate` set | Skip |
+| Reconciliation | ≥1 `bank_transaction` row (Plaid item present) | Skip James's reconciliation goal |
+| Maintenance dispatch | ≥1 work order or maintenance item | Skip |
+| Portfolio dashboard | always fieldable | — |
+
+After `seed:user-test` all rows above should be present. Record the fielded/skipped decision per workflow in the baseline (`workflows_unexercisable`) — the verdict math (Phase 4) EXCLUDES skipped-for-seed workflows so a setup gap never drags the professional verdict. Documents still require a real UI upload (a Document row without its R2 object 404s), so document-boundary probing stays code-level; note it, don't field a document persona against zero documents.
+
+### 0.5 — Route discovery + coverage clusters
 
 ```bash
+find src/app -name "page.tsx" | sort | wc -l   # run this every time — the count grows (was ~180 in 2026-07, ~200 now)
 find src/app -name "page.tsx" | sort
 ```
 
-Key Miskari surfaces to verify exist before persona design:
-- `/tax` (assessments/protests/opportunities/cap-rates)
-- `/protests/[id]` (protest detail + operations)
-- `/leases` and `/leases/renewals`
-- `/contracts` (vendor contract renewal radar)
-- `/reconcile` (bank reconciliation)
-- `/reports` (portfolio analytics)
-- `/dashboard`
-- `/properties/[id]` (property detail with comps snapshot)
+Miskari is ~200 routes and growing — the six original workflows cover roughly a quarter of the product. The run-3 Critical leak sat latent for two runs purely because `/reports?tab=analytics` was never visited. Untested surface is where the next Critical hides. Organize the app into **coverage clusters** and rotate through them:
+
+| Cluster | Key routes | Natural persona |
+|---|---|---|
+| **Tax/protest** (core) | `/tax`, `/tax/assessments`, `/tax/opportunities`, `/tax/cap-rates`, `/tax/exemptions`, `/tax/circuit-breaker`, `/tax/hearing-day`, `/tax/hearing-coverage`, `/tax-triage`, `/tax/preflight`, `/protests/[id]`, `/settings/tax-representation` | B — Marcus |
+| **Financials/dashboard** (core) | `/dashboard`, `/reports` (ALL tabs), `/reconcile`, `/reports/close`, `/scenarios` | D — Robert, F — James |
+| **Leases** (core) | `/leases`, `/leases/renewals`, `/leases/cam-variance`, `/leases/compare` | A — Sandra, C — Diane |
+| **Property lifecycle** (core) | `/properties/[id]` (+ financials/income/loans/capex/units/budget), `/properties/new`, `/properties/onboard`, `/properties/compare`, `/properties/cap-rate-comparison` | A — Sandra, B — Marcus |
+| **Maintenance/operations** (UNDER-TESTED) | `/work-orders` (+ routes/workload/repeats), `/maintenance`, `/inspections`, `/rfqs`, `/purchase-orders`, `/approvals`, `/vendors/cycle-time`, `/schedule` | G — Priya (Maintenance Coordinator) |
+| **Tenant lifecycle** (UNTESTED) | `/tenants`, `/applications`, `/apply/[token]` | H — Terrence (Leasing/Asset Mgr) |
+| **Deals/underwriting** (UNTESTED) | `/deals`, `/underwriting`, `/estimate`, `/scenarios` | D — Robert |
+| **External token surfaces** (UNTESTED, HIGH-STAKES) | `/portal/[token]`, `/share/[token]`, `/share/property/[token]`, `/portfolio-share/[token]`, `/r/[token]/{maintenance,quote,survey}`, `/sign/[token]`, `/documents/request/[token]` | Adversarial (2D) + first-impression pass |
+| **Billing/entitlements** (UNTESTED) | `/pricing`, `/settings/billing`, plan-gated features, the `readonly` fail-safe state | A — Sandra, F — James |
+| **Vendor/insurance/utilities** | `/contracts`, `/insurance`, `/utilities`, `/vendors` | A — Sandra |
+
+**Coverage rotation rule (mandatory in full mode):** read the baseline's `coverage_ledger` (routes visited in prior runs). **Every full run must include at least one cluster marked UNTESTED/UNDER-TESTED that has not been covered in the last 2 runs.** The external-token cluster is doubly important: it is both the highest-stakes adversarial surface (token guessing, expired-token behavior, cross-org leakage through a share) AND an unauthenticated first-impression surface — Phase 2D must probe it every run once any token exists in the seed.
 
 ### 0.6 — Baseline check
 
 ```bash
-ls -t .gstack/user-test-miskari-reports/baseline.json 2>/dev/null | head -1
-ls -t .gstack/user-test-miskari-reports/learnings.md 2>/dev/null | head -1
+ls -t docs/reports/user-test-miskari-reports/baseline.json 2>/dev/null | head -1
+ls -t docs/reports/user-test-miskari-reports/learnings.md 2>/dev/null | head -1
 ```
 
 Read both if present. Apply the same baseline/suppression/recurring-pattern logic as `/user-test` (details in `/home/drago/.claude/skills/user-test/SKILL.md` Phase 0.7).
@@ -148,20 +213,20 @@ Read both if present. Apply the same baseline/suppression/recurring-pattern logi
 ### 0.7 — Setup output
 
 ```bash
-mkdir -p .gstack/user-test-miskari-reports/screenshots
+mkdir -p docs/reports/user-test-miskari-reports/screenshots
 _DATE=$(date +%Y%m%d-%H%M%S)
-_REPORT_FILE=".gstack/user-test-miskari-reports/miskari-${_DATE}.md"
+_REPORT_FILE="docs/reports/user-test-miskari-reports/miskari-${_DATE}.md"
 ```
 
 ---
 
 ## Phase 1: Persona Selection
 
-Load `references/personas.md`. It defines six Miskari-specific personas.
+Load `references/personas.md`. It defines eight Miskari-specific personas (A–H).
 
 ### Selection rules
 
-**Full mode (default):** Select 3 personas. Always include one from {Commercial PM (A), Tax Protest Specialist (B)}. Then pick the 2 remaining based on which features the current diff/focus touches.
+**Full mode (default):** Select 3 personas. Always include one from {Commercial PM (A), Tax Protest Specialist (B)}. Then pick the 2 remaining to satisfy the **coverage rotation rule** (Phase 0.5): at least one selected persona must own a cluster marked UNTESTED/UNDER-TESTED not covered in the last 2 runs (Priya/maintenance, Terrence/tenant-lifecycle, or Robert routed through deals/underwriting). Otherwise pick by which features the current diff/focus touches.
 
 **Diff mode (`--diff`):** Select 2 personas most relevant to the changed surface. If the diff touches `/tax` or `/protests`, always include B.
 
@@ -259,11 +324,16 @@ Not a persona. A property-management-software QA engineer who knows the domain. 
 
 3. **Cross-surface consistency** — does the same property show the same appraised value on the assessment list, the protest detail, and the cap-rate tab? Check at least 2 properties.
 
-4. **Protest deadline accuracy** — if test data includes a Texas property, verify the protest deadline shown matches the statutory rule: later of May 15 or 30 days after the notice date (not just May 15 universally).
+4. **Protest/appeal deadline accuracy (per county, not universal).** Miskari is multi-jurisdiction now (`appraisal-counties.ts`, `appeal-window-overrides.ts`). For each seeded property, verify the deadline shown matches **that property's county rule**, not a hardcoded May 15:
+   - Texas (Dallas/DCAD etc.): later of May 15 or 30 days after the notice date.
+   - Non-TX counties (Clark NV, Alameda CA, …): use the county's own appeal-window rule from `/settings/appeal-windows` / `appeal-deadline-status.ts`. A wrong deadline on a property whose window is open is a Critical, same as TX.
+   A May-15 date shown on a non-Texas property is a [WRONG] finding.
 
-5. **Feature gap audit** — combine the feature gap lists from all personas, de-duplicate, and add any gaps the technical reviewer notices from the route list that no persona visited.
+5. **Regression re-verify (from the suppression registry).** Read `docs/reports/user-test-miskari-reports/known-issues.json`. For each entry in its `protect` list, actively re-assert the fix still holds (cross-org leak closed, later-of deadline rule, unified occupancy method, freshness stamps, protest optimistic-lock). A `protect` item that regressed is a P0 regression, reported as such. Do NOT re-file anything in the `suppressed` list as a fresh finding unless it is past its `ttl_until` (then re-confirm it).
 
-6. **Standard tasks:** console/network audit on every visited route, accessibility probe (alt text, tab order, focus ring, contrast, touch targets on 375px), edge cases (empty portfolio, property with no assessment, lease with no end date).
+6. **Feature gap audit** — combine the feature gap lists from all personas, de-duplicate, and add any gaps the technical reviewer notices from the route list that no persona visited.
+
+7. **Standard tasks:** console/network audit on every visited route, accessibility probe (alt text, tab order, focus ring, contrast, touch targets on 375px), edge cases (empty portfolio, property with no assessment, lease with no end date).
 
 Output format per finding:
 ```
@@ -276,16 +346,19 @@ DOMAIN TECH [category]: [finding] | Evidence: [screenshot/console/measurement] |
 
 Not a persona — a skeptical professional who has been burned by two PM tools with garbage data. They are actively looking for reasons NOT to trust Miskari.
 
-Run as an isolated Agent subprocess. This agent's job is to find holes in the data, not the UX.
+Run as an isolated Agent subprocess. This agent's job is to find holes in the data, not the UX. Order the probes per Phase 0.35 §5 (read-only sweep FIRST, writes LAST) so the highest-value work survives a spend-limit kill.
 
-**What they probe:**
-1. **Math manipulation** — edit a bill amount mid-flow, check if dashboard totals update immediately or show stale aggregates
-2. **Cross-org data leak** — attempt to access routes with modified org context; probe whether RLS isolation holds
-3. **Document boundary** — attempt to access a document URL from property A while authenticated as property B (try guessing a plausible UUID)
-4. **Implausible data injection** — enter an assessed value of $1 and $999,999,999; check if the opportunity score and income approach handle boundary values gracefully
-5. **Concurrency trap** — open the same protest in two tabs, make different edits, submit both; check which wins and whether the loser is surfaced
-6. **Empty state traps** — navigate every analytics/report view with zero data; check for division-by-zero or misleading "no data" screens
-7. **Stale session** — let session expire mid-form fill; check if form data is preserved after re-authentication
+**What they probe (in this order):**
+1. **Aggregation-leak sweep (standing item — run EVERY time, FIRST, read-only).** The run-3 Critical was an aggregation leak, not a detail-route leak — a `withOrg` read with no `organizationId` filter under a BYPASSRLS role. Detail-route sweeps do NOT catch it. Visit **every rollup/aggregate surface** — all `/reports` tabs (esp. `?tab=analytics`), `/dashboard`, `/tax/*`, `/search`, every `compare` page — and reconcile each rendered count/total against the org's real object counts. Any "N / 41"-style number where the org owns fewer is a Critical leak. Then sweep foreign detail IDs (from the current `learnings.md` foreign-ID list): each must 404.
+2. **External token-surface probe (standing item — run EVERY time once a token exists).** For each token route (`/portal/[token]`, `/share/[token]`, `/share/property/[token]`, `/portfolio-share/[token]`, `/r/[token]/*`, `/sign/[token]`, `/documents/request/[token]`): (a) does a malformed/guessed token fail closed (404/expired), not leak? (b) does an EXPIRED/revoked token still render data? (c) does the shared payload expose only the fields the owner configured — no other-org inference from URL params? (d) unauthenticated first-impression: is it a clean read-only view or does it leak mutation controls?
+3. **Math manipulation** — edit a bill amount mid-flow, check if dashboard totals update immediately or show stale aggregates
+4. **Document boundary** — attempt to access a document URL from property A while authenticated as property B (guess a plausible UUID). Note: seed has 0 real documents, so this stays code-level until a doc is uploaded.
+5. **Implausible data injection** — enter an assessed value of $1 and $999,999,999; check the opportunity score / income approach handle boundary values gracefully (no NaN/crash/divide-by-zero)
+6. **Concurrency trap** — open the same protest in two tabs, make different edits, submit both; check which wins and whether the loser is surfaced (optimistic lock — a `protect` item)
+7. **Empty state traps** — navigate every analytics/report view with zero data; check for division-by-zero or misleading "no data" screens
+8. **Stale session** — let session expire mid-form fill; check if form data is preserved after re-authentication
+
+**Driving the custom SelectInput (harness note):** the app-wide dropdown is a custom combobox with an aria-hidden native `<select>`. Playwright `selectOption` CANNOT drive it (this produced a false-positive "form can't submit" M in run 4). Drive it by clicking the trigger, then clicking the option text. Only treat a select as broken if a human click-through also fails.
 
 **Plant/cleanup discipline (mandatory):** every record created must be tracked and deleted. Before Phase 3:
 ```
@@ -299,6 +372,8 @@ CLEANUP STATUS: N/N verified deleted
 ## Phase 3: Report
 
 Load the report template from `/home/drago/.claude/skills/user-test/references/report-template.md`. Use the standard structure, then add these Miskari-specific sections.
+
+**Apply the suppression registry at consolidation (NOT inside persona agents — isolation must be preserved).** After collecting all findings, filter against `docs/reports/user-test-miskari-reports/known-issues.json`: drop any finding matching a `suppressed` entry that is still within its `ttl_until` (note it in a "Suppressed this run" line so it's auditable); keep and elevate any matching a `suppressed` entry past its TTL (re-confirm) or any `protect` item that regressed (P0). This keeps by-design decisions and known harness artifacts out of the fresh-bug list without hiding real regressions.
 
 ### Miskari-specific report sections
 
@@ -400,10 +475,27 @@ Same as `/user-test` Phase 4 (details in `/home/drago/.claude/skills/user-test/S
   },
   "workflows_tested": ["protest", "onboarding"],
   "workflows_completed": ["onboarding"],
+  "workflows_unexercisable": [],
+  "coverage_ledger": {
+    "clusters_covered_this_run": ["tax-protest", "financials-dashboard", "maintenance-operations"],
+    "clusters_never_covered": ["billing-entitlements"],
+    "routes_visited": ["/dashboard", "/reports", "/reconcile", "/work-orders"]
+  },
+  "trend": [
+    { "run": "2026-07-09", "composite": 5.3, "verdict": "maybe", "worst_domain_trust": "conditional" },
+    { "run": "2026-07-10", "composite": 5.7, "verdict": "maybe", "worst_domain_trust": "conditional" }
+  ],
+  "rolbypassrls": true,
   "domain_gate_result": "clean | warning | failed",
   "professional_verdict": "would_pay | maybe | would_not_pay"
 }
 ```
+
+**Coverage ledger** — record which clusters (Phase 0.5) were covered and which routes were visited, so the rotation rule can pick a never-covered cluster next run. `clusters_never_covered` is the backlog that keeps latent Criticals (like the run-3 analytics leak) from hiding in unvisited surface.
+
+**Trend array** — append one entry per run `{ run, composite, verdict, worst_domain_trust }` so the arc (e.g. Marcus Distrusted → Conditional → Trusted) is computable from data, not re-read from prose. This is the product's most important signal.
+
+**Verdict excludes unexercisable workflows.** When computing `professional_verdict`, "workflow completion" is taken over the workflows that were actually fieldable — a workflow listed in `workflows_unexercisable` (skipped for seed gaps per Phase 0.4) never counts as a Failed completion. A setup gap must not read as a product failure.
 
 **`professional_verdict` decision matrix (apply mechanically, not by feel):**
 
@@ -420,7 +512,7 @@ Same as `/user-test` Phase 4 (details in `/home/drago/.claude/skills/user-test/S
 "Conditional" requires: 1 [WRONG] or 2+ [SUSPICIOUS], but no wrong statutory dates and at least one persona completed their task.
 "Distrusted" is triggered by: 2+ [WRONG], OR any wrong statutory date, OR task Failed due to data error (not UX confusion).
 
-Save to `.gstack/user-test-miskari-reports/baseline.json`. Append to `.gstack/user-test-miskari-reports/learnings.md`.
+Save to `docs/reports/user-test-miskari-reports/baseline.json`. Append to `docs/reports/user-test-miskari-reports/learnings.md`.
 
 **Domain trust trend** — track in baseline across runs. If Marcus (Tax Specialist) improves from Distrusted → Conditional → Trusted over 3 runs, that is the most important trend in the product's history.
 
