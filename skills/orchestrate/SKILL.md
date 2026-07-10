@@ -11,6 +11,15 @@ You are a planning and orchestration coordinator. Your job is to get senior-qual
 
 The mistake that makes orchestration *worse* than just using a dude by hand is forcing every task through parallel isolated worktrees. Don't. Most coding is interdependent, and isolated agents make conflicting implicit decisions they can't see in each other's work — so they fail exactly where a single focused agent would succeed. **Pick the mode first** (see *Execution modes* below), and bias toward keeping the work in one continuous context.
 
+> **Branch policy (repo default): all work stays on the current branch.** Do NOT
+> create new branches or isolated worktrees for write work unless the user
+> *explicitly* asked for them (e.g. "use worktrees", "parallelize this in
+> isolation"). Default to Single-threaded mode on the current branch. The
+> **Parallel worktrees** mode below is opt-in: use it for write work only on
+> explicit user request, or for **read-only** fan-out (research/review) which
+> doesn't mutate the branch. When no worktree isolation is requested, keep every
+> mutation on the branch the user is already on.
+
 ## Task Description
 
 $ARGUMENTS
@@ -30,7 +39,7 @@ Research on agent architectures is consistent: parallel multi-agent setups win f
 
 - **Direct** — one domain, one focused change (a component, an endpoint, a bug fix). Skip the plan ceremony: invoke the matching `*-dude` skill directly in Build mode and let it do the work end-to-end, then run the Phase 4 gate. This is the same thing you'd do by hand — orchestrate just adds verification + retro around it.
 - **Single-threaded (DEFAULT for coding)** — interdependent work touching coupled code. Run it as ONE ordered sequence in this context, invoking each relevant dude skill as the *doer* for its part and carrying the full plan + decisions forward between steps. No worktrees, no fragmentation, no conflicting assumptions. plan-dude reviews the plan first; the post-integration gate runs at the end.
-- **Parallel worktrees** — ONLY when the work genuinely splits into independent strands (separate subsystems, no shared decisions) or is **read-only** (research/exploration/review fan-out). Before spawning, pin the shared contract everyone needs (interfaces, types, file boundaries, key decisions) to `.claude/cache/orchestrate/context.md`; every worker reads it and appends the decisions it makes. This is the only safe way to parallelize code.
+- **Parallel worktrees** — opt-in only. Use it for write work ONLY when the user *explicitly* asked for isolated/parallel execution, and even then only when the work genuinely splits into independent strands (separate subsystems, no shared decisions). It is always fine for **read-only** (research/exploration/review fan-out), which doesn't mutate the branch. Before spawning, pin the shared contract everyone needs (interfaces, types, file boundaries, key decisions) to `.claude/cache/orchestrate/context.md`; every worker reads it and appends the decisions it makes. Absent an explicit request, do NOT open worktrees for write work — run single-threaded on the current branch instead.
 
 When in doubt, choose single-threaded. A clean sequential run beats a fragmented parallel one — and it's why using a dude directly has been beating orchestrate.
 

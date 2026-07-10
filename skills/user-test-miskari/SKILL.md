@@ -520,6 +520,8 @@ Save to `docs/reports/user-test-miskari-reports/baseline.json`. Append to `docs/
 
 ## Phase 5: Offer to Implement
 
+**Branch discipline — stay on one branch.** Do NOT open a new per-run branch or worktree for the fixes. Apply every implementation edit on the **current branch** (whatever is checked out when the run starts); if that happens to be `main`, apply directly on `main`. Override the default "branch off `main` before editing" behavior for this skill — a user-test run must not spawn `fix/user-test-findings-*` (or any other) branch. Leave the edits uncommitted for review unless the user explicitly asks to commit or push (per `CLAUDE.md`).
+
 Same as `/user-test` Phase 5. When implementing Miskari findings, follow `CLAUDE.md` conventions:
 - Never use bare `prisma` against tenant tables — use `orgPrisma(orgId)`
 - Money is integer cents in BigInt columns (`*Cents` suffix) — use `bigCents()` / `formatCents()`
