@@ -1,6 +1,6 @@
 # Miskari Critical Workflow Protocols
 
-Six core workflows that define whether Miskari is worth paying for. Each protocol defines: the step-by-step path a domain professional takes, what data they expect at each step, what would cause them to lose trust, and what "success" means for a paying customer — not just task completion, but professional-grade output quality.
+Ten core workflows that define whether Miskari is worth paying for. Workflows 1–6 are the original paying-professional flows; 7–10 (maintenance dispatch, tenant/application pipeline, deal underwriting, external token surfaces) cover clusters that were untested through the first four runs and are where latent Criticals hide. Each protocol defines: the step-by-step path a domain professional takes, what data they expect at each step, what would cause them to lose trust, and what "success" means for a paying customer — not just task completion, but professional-grade output quality.
 
 ---
 
@@ -8,7 +8,7 @@ Six core workflows that define whether Miskari is worth paying for. Each protoco
 
 **Primary persona:** B — Marcus (Tax Specialist)
 **Secondary:** A — Sandra (Commercial PM)
-**Seasonal priority:** P0 during Jan–May; P1 rest of year
+**Seasonal priority:** P0 while any seeded property's appeal window is OPEN (per its county rule — see Phase 0.3); P1 otherwise. For a Texas-only seed this is Jan–May, but Miskari is multi-jurisdiction now, so derive it from the properties, not the calendar.
 
 ### Steps
 1. Navigate to `/tax` (redirects to `/tax/assessments`)
@@ -24,7 +24,7 @@ Six core workflows that define whether Miskari is worth paying for. Each protoco
 11. Print/download the hearing packet → verify it shows equity comps table with property value vs. median $/sqft gap
 
 ### Domain accuracy checks
-- Protest deadline: must exactly follow Texas rule — later of May 15 or 30 days after notice date. Wrong by even one day = professional distrust
+- Protest/appeal deadline: must exactly follow **that property's county rule**. Texas (Dallas/DCAD etc.): later of May 15 or 30 days after notice date. Non-TX counties (Clark NV, Alameda CA, …): the county's own appeal-window rule (`appeal-window-overrides.ts` / `/settings/appeal-windows`). A May-15 date shown on a non-Texas property is WRONG. Wrong by even one day = professional distrust
 - Equity comps: each shows $/sqft with source date; median is labeled "§41.43(b)(3) median" or equivalent; property's $/sqft is highlighted vs. median
 - Cap rate inputs visible: the income approach panel must show the cap rate assumption, not just the final value. Professionals want to verify the input
 - Evidence enforcement: DCAD rules are PDF/JPG/XLS only, 8 MB max — the UI must display these limits and enforce them
@@ -262,3 +262,153 @@ Six core workflows that define whether Miskari is worth paying for. Each protoco
 - All leases paid this month → Rent collection shows "All N leases paid this month" (green, not empty/missing)
 - Tax season card outside March–July → no card shown even if protests are in progress
 - `unmatchedBankTxnCount = 0` → Bank Feed stat cell absent from the grid entirely (conditional render, not showing "0")
+
+---
+
+## Workflow 7: Maintenance Dispatch & Preventive Maintenance
+
+**Primary persona:** G — Priya (Maintenance Coordinator)
+**Secondary:** C — Diane (Residential Landlord) / A — Sandra (Commercial PM)
+
+### Steps
+1. Navigate to `/work-orders` → confirm the queue sorts urgent/emergency first, not by creation date
+2. Open an urgent open work order → assign it to a vendor; verify status advances open → assigned and the vendor sees it
+3. Navigate to `/maintenance` → find a preventive-maintenance item that's due (nextDueAt in the past) → generate a work order from it (or confirm one exists)
+4. Navigate to `/work-orders/workload` and `/vendors/cycle-time` → check the numbers reconcile with the raw work-order list
+5. Navigate to `/inspections` → confirm an inspection can log a deficiency and convert it to a work order
+6. Check COI/insurance status where dispatch happens → a vendor with a lapsed COI should be flagged before assignment
+7. Optionally: `/rfqs` + `/purchase-orders` → solicit a quote and issue a PO for a larger job; verify approval routing
+
+### Domain accuracy checks
+- PM due-date math: nextDueAt = lastServicedAt + intervalDays. An item marked "due" must actually be past that date
+- Work-order status is the real lifecycle: open → assigned → in_progress → on_hold → completed (not "todo/doing/done")
+- Cycle-time = completed_at − created_at across completed WOs; workload = open WOs per vendor. Both must foot to the underlying list
+- "Completed" requires a completion note/photo/vendor confirmation — never auto-marked
+- Urgent/emergency priority actually reorders the default queue
+
+### Trust-breakers
+- A work order shows "completed" with no evidence of completion (auto-marked) — same distrust as a lying status badge
+- PM item flagged "due" whose interval math says it isn't (or vice versa) — the schedule can't be trusted, so PM slips
+- A vendor with a lapsed COI is dispatchable with no warning (liability exposure)
+- Cycle-time/workload aggregates that don't reconcile with the work-order list (aggregation trust — same family as the analytics leak)
+- Urgent WOs buried below routine ones in the default sort
+
+### Success for a professional
+- Queue triage-ready: urgent first, assignment ≤3 clicks, status advances visibly
+- PM schedule surfaces what's due and converts to work orders without re-keying
+- COI status appears at the point of dispatch, not buried in vendor settings
+- Workload/cycle-time views reconcile with the raw list and help rebalance vendors
+
+### Edge cases to probe
+- Work order with no vendor assigned → clear "unassigned" state, still counts in the queue
+- PM item with no lastServicedAt → shows "never serviced", not a bogus due date
+- Emergency work order created after hours → still surfaces at top; no silent drop
+- Vendor with no COI on file at all (vs. lapsed) → both block/flag dispatch distinctly
+
+---
+
+## Workflow 8: Tenant Application & Screening Pipeline
+
+**Primary persona:** H — Terrence (Leasing/Asset Manager)
+**Secondary:** C — Diane (Residential Landlord)
+
+### Steps
+1. Navigate to `/applications` → review the incoming application pipeline; confirm each row's status reflects where the applicant actually is
+2. Open an application (`/applications/[id]`) → advance it one step in screening; verify the status change persists and is audited
+3. Follow the applicant → `/tenants` / tenant detail → confirm the link to lease + payment history is intact
+4. Inspect the public application intake `/apply/[token]` → confirm it's a clean, scoped form (unauthenticated) that doesn't leak org data
+5. From a tenant/lease, check occupancy reporting distinguishes leased vs. occupied (signed-not-occupied)
+
+### Domain accuracy checks
+- Application status is the real pipeline stage (received → screening → approved/adverse-action), not a generic flag
+- Advancing an application writes an audit-trail entry (who moved it, when)
+- Occupancy distinguishes leased vs. occupied, or states clearly which metric it is
+- The public `/apply/[token]` intake exposes only the intake form — no portfolio/tenant data inferable from the token or URL params
+
+### Trust-breakers
+- Application status doesn't match the applicant's real screening stage (pipeline lies)
+- Advancing/executing has no audit trail (a controller/asset manager can't trace decisions)
+- `/apply/[token]` leaks org or other-applicant data, or a guessed/expired token still renders
+- Occupancy conflates leased and occupied, inflating the number
+
+### Success for a professional
+- The full application → screening → lease funnel is visible in one place with accurate per-applicant status
+- Advancing an applicant is auditable
+- Public intake is scoped and safe; occupancy reporting is unambiguous
+
+### Edge cases to probe
+- Malformed/guessed `/apply/[token]` → fails closed (404), does not leak
+- Expired application-request token → clear expired state, not a live form
+- Applicant with no linked property yet → pipeline still coherent
+- Adverse-action / rejected applicant → handled distinctly, not silently deleted
+
+---
+
+## Workflow 9: Deal Underwriting & Acquisition Scenarios
+
+**Primary persona:** D — Robert (Passive Investor)
+**Secondary:** H — Terrence (Leasing/Asset Manager)
+
+### Steps
+1. Navigate to `/deals` → review the pipeline; open a deal (`/deals/[id]`)
+2. Navigate to `/underwriting` → enter/confirm the assumptions (purchase price, NOI, cap rate, financing)
+3. Verify the returns math: cap rate = NOI ÷ price; cash-on-cash and DSCR if shown
+4. Navigate to `/scenarios` → run a sensitivity (change cap rate or rent) and confirm outputs move correctly
+5. Use `/estimate` if present → sanity-check a quick valuation against the underwriting
+
+### Domain accuracy checks
+- Cap rate = NOI ÷ purchase price, shown with both inputs visible (not just the result)
+- Cash-on-cash = pre-tax cash flow ÷ equity invested; DSCR = NOI ÷ debt service — each traceable to inputs
+- Boundary handling: price = 0 must not divide-by-zero / NaN; absurd inputs handled gracefully (this is also a Phase 2D probe)
+- Scenario outputs change monotonically and correctly when an input moves
+
+### Trust-breakers
+- Returns math that doesn't tie to the stated inputs (a finance-literate investor re-derives it in his head)
+- A "portfolio health" or valuation number with no methodology
+- Divide-by-zero / NaN on boundary inputs
+- Scenario sliders that don't move the output, or move it the wrong way
+
+### Success for a professional
+- Underwriting shows inputs AND derived returns, each auditable
+- Scenarios produce a believable sensitivity, not a flat line
+- Boundary inputs are handled without a crash
+
+### Edge cases to probe
+- Deal with no financials yet → empty-but-coherent underwriting, not 0s presented as real
+- Price = 0 or NOI = 0 → graceful, no NaN
+- Scenario with an extreme cap rate (0.5% / 50%) → still renders a sane (if unrealistic) number
+
+---
+
+## Workflow 10: External Token Surfaces (shares, portals, request links)
+
+**Primary persona:** H — Terrence (Leasing/Asset Manager) for the happy path; **Adversarial (Phase 2D)** for the attack path
+**Secondary:** D — Robert (Passive Investor, the recipient of a share)
+
+This workflow is BOTH a first-impression UX surface (what a tenant/vendor/lender sees, unauthenticated) AND the highest-stakes adversarial surface. Test both faces every run once a token exists in the seed.
+
+### Steps (happy path)
+1. From a property/portfolio, generate a read-only share link (`/share/property/[token]`, `/portfolio-share/[token]`)
+2. Open the link in a clean/incognito context (no auth) → confirm it renders read-only, discloses read-only + expiry, exposes no mutation controls
+3. Open a tenant/vendor-facing link (`/portal/[token]`, `/r/[token]/maintenance`, `/r/[token]/quote`, `/r/[token]/survey`, `/sign/[token]`, `/documents/request/[token]`) → confirm the recipient sees only what they should
+
+### Domain accuracy checks
+- The shared payload exposes only owner-configured fields — no other-org data inferable from the token or URL params
+- Expiry and read-only status are disclosed to the recipient
+- The unauthenticated view is a clean, professional first impression (this is what a lender's first taste of the operator's tooling looks like)
+
+### Trust-breakers (attack path — Phase 2D probes these)
+- A malformed or guessed token renders data instead of failing closed (404/expired)
+- An EXPIRED or revoked token still renders
+- A share leaks fields the owner didn't configure, or lets a recipient infer another org's data via URL params
+- A "read-only" share exposes a mutation control that actually works
+- The `org/<orgId>/` document-key guard can be bypassed from a token surface
+
+### Success for a professional
+- Send-a-link is one action; the recipient needs no login; the link is genuinely read-only and expires
+- Both the sender (Terrence) and the recipient (Robert) trust it — Robert loved the disclosed read-only/no-login/30-day-expiry in prior runs
+
+### Edge cases to probe
+- Token for a since-deleted/soft-deleted parent → clean gone state, not a stale render
+- Two different token types with a swapped token → each fails closed
+- Very old token (past expiry window) → expired, re-issue prompt to the owner only

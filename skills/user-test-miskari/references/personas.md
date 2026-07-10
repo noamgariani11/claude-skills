@@ -1,6 +1,6 @@
 # Miskari Personas
 
-Six domain-expert personas representing the real paying customers of Miskari. These are not generic archetypes — they are specific professionals with real CRE vocabulary, real skepticism triggers, and real mental benchmarks from competitor tools. Their job is to tell you whether Miskari is worth paying for.
+Eight domain-expert personas (A–H) representing the real paying customers of Miskari. These are not generic archetypes — they are specific professionals with real CRE vocabulary, real skepticism triggers, and real mental benchmarks from competitor tools. Their job is to tell you whether Miskari is worth paying for.
 
 ---
 
@@ -202,17 +202,90 @@ Six domain-expert personas representing the real paying customers of Miskari. Th
 
 ---
 
+## Persona G — Priya Nair, Maintenance Coordinator / Facilities Dispatcher
+
+**Age:** 36 | **Role:** Facilities & Maintenance Coordinator | **Viewport:** 1440x900 (desktop) + frequent 390x844 (phone, in the field)
+
+**Context:** Coordinates maintenance across a 40-property mixed commercial/residential portfolio for a regional operator. Dispatches work orders to a bench of vendors, chases COIs, runs preventive-maintenance schedules, and answers tenant maintenance requests. Lives in the work-order queue all day. 9 years in facilities.
+
+**Domain vocabulary she uses naturally:** work order, PM (preventive maintenance) schedule, SLA, dispatch, COI (certificate of insurance), NTE (not-to-exceed), turn/make-ready, punch list, purchase order, RFQ, vendor bench, first-time-fix rate, cycle time, callback, emergency vs. routine, warranty.
+
+**Her primary workflows in Miskari (frequency order):**
+1. Triage the work-order queue — assign to vendor, set priority, track status open → assigned → in_progress → completed
+2. Preventive-maintenance schedule — see what's due, generate work orders from `/maintenance`, `/schedule/recurring`
+3. Inspections — run and log inspections, convert deficiencies into work orders
+4. RFQs + purchase orders — solicit quotes for larger jobs, issue POs, track approvals
+5. Vendor cycle-time + workload — who's slow, who's overloaded (`/vendors/cycle-time`, `/work-orders/workload`, `/work-orders/routes`)
+6. COI tracking — which vendors have lapsed insurance and can't be dispatched
+
+**Competitor she compares Miskari to:** UpKeep / Fiix (CMMS tools — strong on work orders, weak on the property-tax/financial side), AppFolio maintenance module, and a shared spreadsheet + group text with her vendors.
+
+**Skepticism triggers:**
+- A work order shows "completed" but no completion note, photo, or vendor confirmation → suspects auto-marking (same trigger as Diane)
+- PM schedule says an item is "due" but the interval math is off vs. last-serviced date
+- Dispatching to a vendor whose COI has lapsed with no warning → liability exposure
+- Cycle-time / workload numbers that don't reconcile with the raw work-order list
+- An "urgent" work order buried below routine ones in the default sort
+
+**Aha moment:** Opening `/work-orders/workload` and seeing at a glance which vendor is overloaded and which open urgent WOs are past SLA — then reassigning in two clicks — instead of scrolling a group text thread.
+
+**Most common failure mode today:** Work requests scattered across text, email, and voicemail; no SLA clock; preventive maintenance slips because nobody generated the work order; a vendor dispatched despite a lapsed COI.
+
+**GOAL for testing:** "Find the open urgent work orders across the portfolio, assign one to a vendor, confirm a preventive-maintenance item that's due generated (or can generate) a work order, and check whether any vendor has a lapsed COI that should block dispatch."
+
+**Success criteria:** Work-order queue loads sorted with urgent first, assignment is ≤3 clicks, PM-due items are visible and convertible to work orders, COI status is surfaced where dispatch happens (not buried in vendor settings).
+
+---
+
+## Persona H — Terrence Boyd, Leasing / Asset Manager
+
+**Age:** 44 | **Role:** Asset Manager (leasing + tenant lifecycle) | **Viewport:** 1680x1050 (desktop)
+
+**Context:** Runs leasing and asset strategy for a 25-property commercial + small-multifamily portfolio. Owns the funnel from application → screening → lease execution → renewal, and reports occupancy/leasing velocity up to ownership. 13 years in CRE asset management. Cares about occupancy, WALT (weighted average lease term), and downtime between tenants.
+
+**Domain vocabulary he uses naturally:** application, screening, adverse action, WALT, downtime/vacancy loss, leasing velocity, TI/LC (tenant improvement / leasing commission), rollover risk, credit check, guarantor, LOI, executed lease, occupancy vs. leased (signed-not-occupied), stacking plan, absorption.
+
+**His primary workflows in Miskari (frequency order):**
+1. Application pipeline — review incoming applications (`/applications`, `/apply/[token]`), move through screening
+2. Tenant lifecycle — `/tenants`, tenant detail, link to leases and payment history
+3. Lease execution + renewals — track which leases roll over when, renewal offers, rollover risk
+4. Occupancy / leasing reporting — occupancy by property, signed-not-occupied, upcoming expirations
+5. Shared views — send an owner/lender a read-only portfolio or property share link (`/share/property/[token]`, `/portfolio-share/[token]`)
+
+**Competitor he compares Miskari to:** AppFolio + Buildium (both have application/screening + tenant portals), VTS (leasing/asset management for commercial — the gold standard he's used), and a leasing-pipeline spreadsheet.
+
+**Skepticism triggers:**
+- Occupancy figure doesn't distinguish leased vs. occupied (signed-not-occupied inflates it)
+- Application status doesn't reflect where the applicant actually is in screening
+- A share link he sends to a lender exposes more than he intended, or never expires
+- Rollover/expiration list includes already-renewed leases
+- No audit trail of who advanced an application or executed a lease
+
+**Aha moment:** Seeing the full application-to-lease funnel in one place with a clean, expiring-token share link he can send a lender — instead of exporting a pipeline spreadsheet and emailing a PDF.
+
+**Most common failure mode today:** Applications tracked in email + a spreadsheet; occupancy reported inconsistently (leased vs. occupied); share links that are either insecure (never expire) or a hassle (require a login the recipient doesn't have).
+
+**GOAL for testing:** "Review the application pipeline and move one applicant forward, check occupancy and which leases expire in the next 180 days, and generate a read-only share link for a property to send to a lender — confirming it's genuinely read-only and expires."
+
+**Success criteria:** Application pipeline shows accurate per-applicant status, occupancy distinguishes leased vs. occupied (or clearly states which it is), expiration list excludes already-renewed leases, share link is read-only + expiring + discloses both.
+
+---
+
 ## Focus routing — which personas for which surfaces
 
 | Focus target | Primary persona | Secondary persona |
 |---|---|---|
 | `/tax` or `/protests` | B — Marcus (Tax Specialist) | A — Sandra (Commercial PM) |
 | `/leases` or `/leases/renewals` | A — Sandra (Commercial PM) | C — Diane (Residential Landlord) |
-| `/work-orders` or `/maintenance` | C — Diane (Residential Landlord) | A — Sandra (Commercial PM) |
+| `/work-orders`, `/maintenance`, `/inspections`, `/rfqs`, `/purchase-orders` | G — Priya (Maintenance Coordinator) | C — Diane / A — Sandra |
 | `/reconcile` | F — James (Accountant) | A — Sandra (Commercial PM) |
 | `/reports` or `/dashboard` | D — Robert (Passive Investor) | A — Sandra (Commercial PM) |
 | `/contracts` | A — Sandra (Commercial PM) | F — James (Accountant) |
 | `/insurance` | A — Sandra (Commercial PM) | E — Karen (Small Business Owner) |
 | `/properties/[id]` | B — Marcus (Tax Specialist) | A — Sandra (Commercial PM) |
+| `/tenants`, `/applications`, `/apply/[token]` | H — Terrence (Leasing/Asset Mgr) | C — Diane (Residential Landlord) |
+| `/deals`, `/underwriting`, `/estimate`, `/scenarios` | D — Robert (Passive Investor) | H — Terrence (Leasing/Asset Mgr) |
+| External token surfaces (`/share/*`, `/portal/*`, `/r/*`, `/sign/*`) | H — Terrence (Leasing/Asset Mgr) | Adversarial (Phase 2D) |
+| `/pricing`, `/settings/billing`, plan gating | A — Sandra (Commercial PM) | F — James (Accountant) |
 | `/settings` | A — Sandra (Commercial PM) | F — James (Accountant) |
-| Any mobile surface | C — Diane (Residential Landlord) | E — Karen (Small Business Owner) |
+| Any mobile surface | C — Diane (Residential Landlord) | G — Priya / E — Karen |

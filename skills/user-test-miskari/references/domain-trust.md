@@ -36,7 +36,7 @@ All three must hold simultaneously. A beautifully designed app with wrong math l
 - Public records enrichment shows which sources loaded vs. failed
 
 ### Deadline precision
-- Protest deadline is the exact Texas statutory date: later of May 15 OR 30 days after notice date — not just "May 15" for all properties
+- Protest/appeal deadline is the exact date **for that property's county**: in Texas, later of May 15 OR 30 days after notice date; in other supported jurisdictions (Clark NV, Alameda CA, …), that county's own appeal-window rule (`appeal-window-overrides.ts`). A hardcoded "May 15" on every property — or a May-15 date on a non-Texas property — is a trust failure
 - Contract notice deadline is a calendar date, not "you have N days" — professionals need to put it on a calendar
 - Lease expiration shows days remaining, not just the end date
 - "Action required" banners disappear immediately when the action is taken — stale banners train users to ignore them
@@ -100,6 +100,20 @@ All three must hold simultaneously. A beautifully designed app with wrong math l
 4. Export CSV has amounts stored as strings not numbers (Excel can't sum them without manual correction)
 5. Two bills with same vendor/amount in same month auto-matched to the same bank transaction (double-booking)
 
+### Priya (Maintenance Coordinator) — what makes her go back to her group text
+1. A work order shows "completed" with no note, photo, or vendor confirmation (auto-marked)
+2. A PM item flagged "due" whose interval math (lastServiced + interval) says it isn't — the schedule can't be trusted
+3. A vendor with a lapsed COI is dispatchable with no warning
+4. Cycle-time / workload aggregates that don't reconcile with the raw work-order list
+5. Urgent/emergency work orders buried below routine ones in the default sort
+
+### Terrence (Leasing/Asset Manager) — what makes him fall back to his pipeline spreadsheet
+1. Occupancy that conflates leased and occupied (signed-not-occupied inflates the number)
+2. Application status that doesn't match the applicant's real screening stage
+3. A share link he sends a lender exposes more than configured, or never expires
+4. Rollover/expiration list that includes already-renewed leases
+5. No audit trail of who advanced an application or executed a lease
+
 ---
 
 ## Competitor benchmarks
@@ -131,6 +145,16 @@ Professionals don't evaluate Miskari in isolation — they compare it to what th
 - **TurboTenant advantage:** Free tier, online applications, e-lease signing, tenant portal
 - **TurboTenant weakness Miskari can win on:** No commercial support, no tax protest, no vendor/contract management, no CAD integration, no financial analytics
 - **Parity check:** Basic lease tracking, maintenance requests, rent reminders
+
+### UpKeep / Fiix (CMMS — Priya's maintenance benchmark)
+- **CMMS advantage:** Deep work-order + PM-schedule tooling, mobile-first for field techs, asset histories, SLA clocks
+- **CMMS weakness Miskari can win on:** No property-tax/protest side, no financial/NOI reporting, no lease/tenant lifecycle — a maintenance silo, not a property platform
+- **Parity check:** Work-order queue, preventive-maintenance schedules, vendor dispatch, cycle-time reporting. If Miskari's work-order flow is materially worse than UpKeep's, Priya notices immediately
+
+### VTS (Terrence's leasing/asset-management benchmark)
+- **VTS advantage:** Best-in-class commercial leasing pipeline, stacking plans, deal/tenant funnel, portfolio analytics for institutional CRE
+- **VTS weakness Miskari can win on:** Enterprise pricing + complexity, overkill for 5–50 property operators, no tax-protest module, no day-to-day maintenance/billing ops
+- **Parity check:** Application → screening → lease funnel, occupancy (leased vs. occupied), rollover/expiration tracking, shareable read-only views for owners/lenders
 
 ---
 
