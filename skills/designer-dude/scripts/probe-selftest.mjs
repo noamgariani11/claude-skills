@@ -63,7 +63,9 @@ const argv = process.argv.slice(2);
 const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
 const urlArg = argOf("--url");
 const outArg = argOf("--out");
-const fixture = urlArg || ("file://" + join(here, "fixtures", "selftest.html"));
+const precision = argv.includes("--precision");
+const fixture = urlArg ||
+  ("file://" + join(here, "fixtures", precision ? "clean.html" : "selftest.html"));
 
 // Each entry: [id, description, predicate over the probe result].
 const EXPECT = [
@@ -107,6 +109,57 @@ const EXPECT = [
   ["T2",  "families counted",                    (d) => d.typography.distinctFamilies >= 1],
   ["T3",  "measure median computed",             (d) => d.typography.measureCh && d.typography.measureCh.median > 0],
   ["S1",  "no probe section errored",            (d) => d.errors.length === 0],
+];
+
+// --precision runs the OTHER fixture: fixtures/clean.html, a page built out of
+// constructs that are correct, deliberate, or explicitly exempt. Every entry
+// here is a false positive that once cost a real review round -- a reviewer
+// re-measuring twenty small buttons by hand, or arguing `transition: all` in a
+// ledger. Recall and precision are different properties and only one of them
+// was ever tested; a check that fires on everything is not a check.
+const REJECT = [
+  ["C1",  "UA-default head elements are not pure-black TEXT", (d) => d.color.pureBlackOrWhiteText === 0],
+  ["C2",  "no contrast failures on a passing palette",        (d) => d.color.textContrast.failures === 0],
+  ["C3",  "field borders at 3:1 are not flagged",             (d) => d.color.nonTextContrast.fieldBorderFailures === 0],
+  ["C4",  "2.5.8: isolated sub-24px target is NOT a failure",  (d) => d.interaction.belowWcagTarget24.count === 0],
+  ["C5",  "...and the spacing exception was actually applied", (d) => d.interaction.target24SpacingExempt.count >= 1],
+  ["C6",  "no 24-44px targets invented",                      (d) => d.interaction.belowFittsTarget44.count === 0],
+  ["C6b", "sr-only skip link is not a 1x1 tap target",        (d) => !JSON.stringify(d.interaction.belowWcagTarget24.list || [])
+                                                                        .includes("skip") &&
+                                                                     !JSON.stringify(d.interaction.target24SpacingExempt.list || [])
+                                                                        .includes("skip")],
+  ["C7",  "disabled control is not a missing-pointer finding", (d) => d.interaction.missingPointerCursor.count === 0],
+  ["C8",  "a real focus ring is seen",                        (d) => d.interaction.focusRing.invisible === 0],
+  ["C9",  "half-steps + computed margins are not off-base",   (d) => d.system.spacing.offFourBaseCount === 0],
+  ["C10", "`transition: all` initial value is not counted",   (d) => d.motion.transitionPropertyAll === 0],
+  ["C11", "no infinite animations invented",                  (d) => d.motion.infiniteAnimations.count === 0],
+  ["C12", "no over-600ms transitions invented",               (d) => d.motion.transitionsOver600ms.length === 0],
+  ["C13", "labelled fields are not unlabelled",               (d) => d.a11y.fieldsMissingLabel.count === 0],
+  ["C14", "alt-bearing and decorative images pass",           (d) => d.a11y.imagesMissingAlt.count === 0],
+  ["C15", "aria-label counts as an accessible name",          (d) => d.a11y.controlsMissingAccessibleName.count === 0],
+  ["C16", "no duplicate ids invented",                        (d) => d.a11y.duplicateIds.count === 0],
+  ["C17", "sequential headings are not skips",                (d) => d.a11y.headings.skippedLevels.length === 0],
+  ["C18", "aria-hidden on a leaf svg is fine",                (d) => d.a11y.ariaHiddenContainingFocusable === 0],
+  ["C19", "exactly one h1 is seen",                           (d) => d.a11y.headings.h1 === 1],
+  ["C20", "no horizontal overflow",                           (d) => d.layout.horizontalOverflow === false],
+  ["C21", "measure inside the band",                          (d) => d.typography.offenders.measureOutOfBand.length === 0],
+  ["C22", "leading inside the band",                          (d) => d.typography.offenders.leadingOutOfBand.length === 0],
+  ["C23", "typographic apostrophes are not straight ones",    (d) => d.typography.straightQuotes.apostrophes === 0 &&
+                                                                     d.typography.straightQuotes.properApostrophes >= 1],
+  ["C24", "no slop tells on a plain page",                    (d) => d.slop.purpleOrIndigoGradients === 0 &&
+                                                                     d.slop.backdropBlurElements === 0 &&
+                                                                     d.slop.iconsInColouredCircles === 0 &&
+                                                                     d.slop.threeUpFeatureGrids === 0 &&
+                                                                     d.slop.colouredLeftBorderCards === 0 &&
+                                                                     d.slop.gradientClippedText === 0],
+  ["C25", "no generic marketing copy invented",               (d) => d.slop.genericMarketingCopy.length === 0 &&
+                                                                     d.slop.aiBadgeCopy.length === 0 &&
+                                                                     d.slop.emojiInHeadingsOrButtons.count === 0],
+  ["C26", "table with scope + caption passes",                (d) => d.app.tables.length >= 1 && d.app.tables[0].hasScope === true],
+  ["C27", "scales are read as scales, not sprawl",            (d) => d.system.radius.distinct <= 4 &&
+                                                                     d.system.shadow.distinct <= 4 &&
+                                                                     d.system.zIndex.distinct <= 6],
+  ["C28", "no probe section errored",                         (d) => d.errors.length === 0],
 ];
 
 const profile = mkdtempSync(join(tmpdir(), "dd-selftest-"));
@@ -165,6 +218,74 @@ try {
   }
   await page.goto(fixture, { waitUntil: "load" });
   await page.waitForTimeout(300);
+
+  // ---- precision pass: the clean fixture must yield no findings at all ----
+  if (precision) {
+    const runProbe = async (tag) => {
+      await page.waitForTimeout(150);
+      const d = await page.evaluate(([src]) => {
+        // eslint-disable-next-line no-new-func
+        new Function(src)();
+        return window.__ddProbe({});
+      }, [probeSrc]);
+      d.tag = tag;
+      return d;
+    };
+    const runs = [];
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const primary = await runProbe("1440x900");
+    runs.push(primary);
+    await page.setViewportSize({ width: 390, height: 844 });
+    runs.push(await runProbe("390x844"));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: "dark" });
+    runs.push(await runProbe("dark-1440x900"));
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+    runs.push(await runProbe("reduced-motion"));
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+
+    let pass = 0;
+    const missed = [];
+    for (const [id, desc, pred] of REJECT) {
+      let ok = false, err = "";
+      try { ok = !!pred(primary); } catch (e) { err = " (threw: " + e.message + ")"; }
+      if (ok) pass++; else missed.push(`  ${id.padEnd(5)} ${desc}${err}`);
+    }
+    console.log(`probe-selftest --precision: ${pass}/${REJECT.length} correct constructs left alone`);
+    if (missed.length) {
+      console.log("FALSE POSITIVES (the probe flagged something that is fine):");
+      missed.forEach((m) => console.log(m));
+      process.exitCode = 1;
+    }
+
+    // The thresholds live in probe-report.py, so precision has to be tested
+    // there too: a probe that measures honestly and a threshold that fires at
+    // the wrong value produce the same wasted round.
+    const { writeFileSync } = await import("node:fs");
+    const payloadPath = join(profile, "probe-clean.json");
+    writeFileSync(payloadPath, JSON.stringify({
+      label: "clean-fixture", url: fixture, probedAt: new Date().toISOString(),
+      consoleErrors: [], runs,
+    }, null, 1));
+    if (outArg) writeFileSync(outArg, readFileSync(payloadPath, "utf8"));
+
+    const { spawnSync } = await import("node:child_process");
+    const rep = spawnSync("python3", [join(here, "probe-report.py"), payloadPath, "--quiet"],
+                          { encoding: "utf8" });
+    const out = (rep.stdout || "") + (rep.stderr || "");
+    const m = out.match(/^(\d+) candidates/m);
+    const n = m ? Number(m[1]) : (/No threshold breaches/.test(out) ? 0 : -1);
+    console.log(`probe-report on the clean fixture: ${n < 0 ? "could not parse output" : n + " candidates"}`);
+    if (n !== 0) {
+      console.log(out);
+      console.log("THRESHOLD FALSE POSITIVES — a correct page must score clean.");
+      process.exitCode = 1;
+    } else if (!missed.length) {
+      console.log("clean fixture is clean — probe.js and probe-report.py are not inventing work");
+    }
+    await browser.close();
+    process.exit(process.exitCode || 0);
+  }
 
   const data = await page.evaluate(([src]) => {
     // eslint-disable-next-line no-new-func

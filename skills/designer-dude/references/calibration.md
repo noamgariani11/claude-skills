@@ -80,6 +80,52 @@ maximum. Its slop F comes from stacking the patterns, not from page size.
 **Do not quote these numbers as current facts forever.** They are dated. Any of
 these sites can redesign next week; re-measure before citing.
 
+### On Tailwind, the framework supplies the denominator
+
+The counts above — distinct font sizes, radii, shadows, spacing values — mean
+something different on a Tailwind project, because Tailwind *hands you* a scale
+before anyone decides anything. Read them against what the framework ships
+(verified against `node_modules/tailwindcss/theme.css`, v4.3):
+
+| Scale | Tailwind default | vercel.com | claude.com |
+|---|--:|--:|--:|
+| Type steps | **13** (`text-xs`…`text-9xl`) | 8 | 11 |
+| Radii | **9** (`xs`…`4xl` + `full`) | 3 | 6 |
+| Shadows | **7** (`2xs`…`2xl`) | 2 | 5 |
+| Spacing | unbounded in v4 (dynamic) | 18 | 13 |
+
+Two corrections this forces:
+
+1. **Do not dock a Tailwind product for an irregular type ratio.** The rubric's
+   Typography A says "sizes on a visible ratio", and Tailwind's default scale
+   is *not* one: the steps run 12/14/16/18/20/24/30/36/48/60/72/96/128px, whose
+   successive ratios wander from **1.111 to 1.333**. A stock-Tailwind product
+   will always fail a ratio-purity test, which makes that test a false-positive
+   generator on the most common stack in the corpus. **The real signal is how
+   many of the 13 steps are in use.** Eleven distinct sizes on a bespoke system
+   is a pile; eleven on Tailwind is "nobody chose", which is the same grade for
+   a different and more useful reason. Say the useful one.
+2. **A Tailwind product measuring 8–9 distinct radii has shipped the default
+   scale untouched.** That is not a drifting scale — it is an absent decision,
+   and it is the measurable half of slop item 5. Same for 6–7 shadows. Naming
+   it as "you are shipping Tailwind's defaults" lands harder, and is more
+   actionable, than "your radius scale has 9 values".
+
+**Spacing needs its own note in v4.** The scale is now derived from a single
+`--spacing` variable and is *dynamic*, so `p-13` and `mt-19` compile silently —
+"is it a multiple of 4" no longer proves a scale exists. On Tailwind, an
+off-4px spacing value comes from one of exactly two places, and the fix differs:
+the half-steps (`p-0.5`/`1.5`/`2.5`/`3.5` → 2/6/10/14px), which are legitimate
+at small sizes, or arbitrary values (`p-[13px]`), which are the finding. Check
+which before writing it up.
+
+**One measurable defect the default scale creates:** every step from `text-5xl`
+up ships `line-height: 1`. A display heading that wraps to two lines at that
+leading collides descenders with the next line's caps. It is invisible at
+desktop width and appears at 390px, which is why it survives review. If the
+probe reports a heading with computed line-height ≤ 1.05 that wraps, that is a
+confirmed finding, not a taste call — fix with the paired form (`text-6xl/tight`).
+
 ### The consistency check is calibrated too
 
 `probe-report.py --compare` was tuned the same way, and it needed it. The first

@@ -220,9 +220,50 @@ function __ddProbe(opts) {
     elementsTruncated: document.querySelectorAll("*").length > MAX_EL,
     lang: document.documentElement.getAttribute("lang") || null,
     hasViewportMeta: !!document.querySelector('meta[name="viewport"]'),
+    viewportMetaContent: (document.querySelector('meta[name="viewport"]') || {}).content || null,
     hasFavicon: !!document.querySelector('link[rel~="icon"]'),
     themeColor: (document.querySelector('meta[name="theme-color"]') || {}).content || null,
-    fontsLoaded: document.fonts ? document.fonts.size : null
+    fontsLoaded: document.fonts ? document.fonts.size : null,
+
+    // What device does the PAGE think it is on? The runner asks for touch
+    // emulation, but only the page can confirm it took. A "390px" run that
+    // reports pointer:fine is a narrow desktop, and every coarse-pointer
+    // conclusion drawn from it is void -- probe-report.py checks this rather
+    // than trusting the requested config.
+    device: (function () {
+      var mm = function (q) { return !!(window.matchMedia && matchMedia(q).matches); };
+      var cs = getComputedStyle(document.documentElement);
+      // Safe-area insets read back as 0px unless viewport-fit=cover is set, so
+      // report the raw values AND whether cover was requested.
+      var inset = function (side) {
+        var d = document.createElement("div");
+        d.style.cssText = "position:fixed;height:0;width:0;padding-" + side +
+                          ":env(safe-area-inset-" + side + ",0px);visibility:hidden";
+        document.documentElement.appendChild(d);
+        var v = parseFloat(getComputedStyle(d)["padding" + side.charAt(0).toUpperCase() + side.slice(1)]) || 0;
+        d.remove();
+        return Math.round(v);
+      };
+      return {
+        pointerCoarse: mm("(pointer: coarse)"),
+        anyPointerCoarse: mm("(any-pointer: coarse)"),
+        hoverNone: mm("(hover: none)"),
+        maxTouchPoints: navigator.maxTouchPoints || 0,
+        orientation: VW >= VH ? "landscape" : "portrait",
+        // WCAG 1.4.10 reflow is defined at 320 CSS px; visualViewport differs
+        // from innerWidth under pinch-zoom and is what the user actually sees.
+        visualViewport: window.visualViewport
+          ? { w: Math.round(visualViewport.width), h: Math.round(visualViewport.height),
+              scale: Math.round(visualViewport.scale * 100) / 100 }
+          : null,
+        viewportFitCover: /viewport-fit\s*=\s*cover/.test(
+          ((document.querySelector('meta[name="viewport"]') || {}).content || "")),
+        safeAreaInsets: { top: inset("top"), right: inset("right"),
+                          bottom: inset("bottom"), left: inset("left") },
+        colorScheme: cs.colorScheme || null,
+        forcedColors: mm("(forced-colors: active)")
+      };
+    })()
   };
 
   /* ---------------- typography ---------------- */
@@ -345,10 +386,12 @@ function __ddProbe(opts) {
       if (cs.backgroundImage && /gradient/.test(cs.backgroundImage)) {
         tally(gradients, cs.backgroundImage.slice(0, 160));
       }
-      if (/^rgb\(0, 0, 0\)$|^#000/.test(cs.color) || /^rgb\(255, 255, 255\)$/.test(cs.color)) pureBlackWhite++;
-
       var t = textOf(el);
       if (!t || t.length < 2) return;
+      // Only elements that actually render text can have pure-black/white TEXT.
+      // Run before the guard and this counts <html>, <head>, <meta>, <script>
+      // and every <svg>, which merely inherit the UA default color.
+      if (/^rgb\(0, 0, 0\)$|^#000/.test(cs.color) || /^rgb\(255, 255, 255\)$/.test(cs.color)) pureBlackWhite++;
       tally(textColors, cs.color);
 
       var fg = rgba(cs.color);
@@ -425,7 +468,21 @@ function __ddProbe(opts) {
     });
 
     var padKeys = Object.keys(pads).map(Number);
-    var offBase = padKeys.filter(function (v) { return v % 4 !== 0 && v !== 1 && v !== 2 && v !== 3; });
+    // Exclusions, in order:
+    //  - 1/2/3px: hairlines and insets, not scale steps.
+    //  - 6/10/14/18/22/26: Tailwind's documented half-steps (1.5, 2.5, ...).
+    //    A dense tool using them systematically has chosen a 2px base, which is
+    //    a scale, not drift. Flagging them made every Tailwind app look broken.
+    //  - values seen at most twice: `mx-auto`, flex distribution and other
+    //    COMPUTED margins resolve to arbitrary pixel values (315.5, 83) that
+    //    nobody authored. Real drift repeats.
+    var HALF_STEPS = { 6: 1, 10: 1, 14: 1, 18: 1, 22: 1, 26: 1 };
+    var offBase = padKeys.filter(function (v) {
+      if (v % 4 === 0) return false;
+      if (v === 1 || v === 2 || v === 3) return false;
+      if (HALF_STEPS[v]) return false;
+      return (pads[v] || 0) > 2;
+    });
     function nums(map) {
       return Object.keys(map).map(Number).sort(function (a, b) { return a - b; });
     }
@@ -453,6 +510,8 @@ function __ddProbe(opts) {
     var CLICKABLE = 'a[href],button,[role="button"],[role="link"],[role="tab"],[role="menuitem"],summary,input[type="submit"],input[type="button"],[onclick]';
     var els = Array.prototype.slice.call(document.querySelectorAll(CLICKABLE), 0, 600);
     var missingPointer = mk(EX * 2), tooSmall = mk(EX), tinyTargets = mk(EX * 2), noTransition = 0;
+    var spacingExempt = mk(EX * 2), inlineExempt = 0;
+    var boxes = [];
     els.forEach(function (el) {
       var cs = getComputedStyle(el);
       if (!visible(el, cs)) return;
@@ -466,14 +525,68 @@ function __ddProbe(opts) {
       var inlineException = el.tagName === "A" && cs.display === "inline" &&
         el.parentElement && textOf(el.parentElement).length > 0;
       var w = Math.round(r.width), h = Math.round(r.height);
-      if (!inlineException && w > 0 && h > 0) {
-        if (w < 24 || h < 24) {
-          tinyTargets.push({ sel: selectorFor(el), w: w, h: h, text: (el.innerText || "").trim().slice(0, 24) });
-        } else if (w < 44 || h < 44) {
-          tooSmall.push({ sel: selectorFor(el), w: w, h: h });
+      // A visually-hidden control (the sr-only skip link, 1x1 with a clip) is
+      // not a 1x1 tap target -- it is invisible until focused, when it becomes
+      // full size. Counting it produced a WCAG 2.5.8 "failure" on the one
+      // element that exists to help keyboard users, on every page that does
+      // the accessible thing.
+      var clipped = (cs.clip && cs.clip !== "auto") ||
+        (cs.clipPath && cs.clipPath !== "none" && w <= 2 && h <= 2);
+      if (clipped && w <= 2 && h <= 2) return;
+      if (w > 0 && h > 0) {
+        boxes.push({
+          el: el, rect: r, w: w, h: h, inline: !!inlineException,
+          sel: selectorFor(el), text: (el.innerText || "").trim().slice(0, 24),
+          undersized: (w < 24 || h < 24)
+        });
+      }
+      if (inlineException && w > 0 && h > 0 && (w < 24 || h < 24)) inlineExempt++;
+      if (cs.transitionDuration === "0s") noTransition++;
+    });
+
+    // WCAG 2.5.8's SPACING exception, computed rather than argued each round:
+    // an undersized target conforms if a 24px-diameter circle centred on it
+    // intersects neither another target's box nor another undersized target's
+    // circle. Without this the probe reports every sub-24px control as a
+    // failure, a reviewer re-measures them by hand at two viewports, and the
+    // same twenty rows get re-litigated in the next round's ledger. Emitting
+    // pass/fail here is the difference between a candidate and a chore.
+    var R = 12;
+    function centre(b) {
+      return { x: b.rect.left + b.rect.width / 2, y: b.rect.top + b.rect.height / 2 };
+    }
+    function circleHitsRect(cx, cy, rad, rect) {
+      var nx = Math.max(rect.left, Math.min(cx, rect.right));
+      var ny = Math.max(rect.top, Math.min(cy, rect.bottom));
+      var dx = cx - nx, dy = cy - ny;
+      return (dx * dx + dy * dy) < rad * rad;
+    }
+    boxes.forEach(function (b) {
+      if (!b.undersized) return;
+      if (b.inline) return;                       // exempt by 2.5.8 Inline
+      var c = centre(b), clash = null;
+      for (var i = 0; i < boxes.length && !clash; i++) {
+        var o = boxes[i];
+        if (o === b) continue;
+        // Nested targets (a button inside a link) are one visual target, not
+        // two crowding each other. Counting them collides everything.
+        if (b.el.contains(o.el) || o.el.contains(b.el)) continue;
+        if (o.undersized && !o.inline) {
+          var oc = centre(o), dx = c.x - oc.x, dy = c.y - oc.y;
+          if (dx * dx + dy * dy < (2 * R) * (2 * R)) clash = o.sel;
+        } else if (circleHitsRect(c.x, c.y, R, o.rect)) {
+          clash = o.sel;
         }
       }
-      if (cs.transitionDuration === "0s") noTransition++;
+      if (clash) {
+        tinyTargets.push({ sel: b.sel, w: b.w, h: b.h, text: b.text, crowdedBy: clash });
+      } else {
+        spacingExempt.push({ sel: b.sel, w: b.w, h: b.h, text: b.text });
+      }
+    });
+    boxes.forEach(function (b) {
+      if (b.undersized || b.inline) return;
+      if (b.w < 44 || b.h < 44) tooSmall.push({ sel: b.sel, w: b.w, h: b.h });
     });
 
     // Focus ring: actually focus things and diff the computed style. This is
@@ -505,7 +618,12 @@ function __ddProbe(opts) {
     return {
       clickable: els.length,
       missingPointerCursor: missingPointer.out(),
+      // Sub-24px AND crowded: an actual 2.5.8 failure. The exempt lists are
+      // reported separately so a reviewer can see the exceptions were applied
+      // rather than assumed, and so nobody re-measures them by hand.
       belowWcagTarget24: tinyTargets.out(),
+      target24SpacingExempt: spacingExempt.out(),
+      target24InlineExemptCount: inlineExempt,
       belowFittsTarget44: tooSmall.out(),
       clickableWithoutTransition: noTransition,
       focusRing: { tested: tested, invisible: noRing.n, list: noRing.list,
@@ -807,7 +925,11 @@ function __ddProbe(opts) {
       if (d > 0.6) {
         longRunning.push({ sel: selectorFor(el), duration: cs.transitionDuration, property: cs.transitionProperty });
       }
-      if (cs.transitionProperty === "all") allProp++;
+      // `all` is the INITIAL value of transition-property, so every element
+      // with no transition at all reports it. Only count it where the author
+      // actually asked for a transition (non-zero duration), or this fires on
+      // every <script>, <meta> and <svg> in the document.
+      if (cs.transitionProperty === "all" && d > 0) allProp++;
     });
     return {
       animatedElements: anims,
@@ -884,7 +1006,16 @@ function __ddProbe(opts) {
       if (br < r.width * 0.45) return;
       var bg = rgba(cs.backgroundColor);
       if (!bg || bg.a < 0.2) return;
-      if (hsl(bg).s < 0.15) return;
+      // HSL saturation is not a usable colourfulness test near white or black:
+      // it is (max-min)/(2-max-min) above L=0.5, so it blows up as lightness
+      // approaches 1. A barely-tinted white like rgb(254,252,249) reports
+      // s=0.71 -- HIGHER than a genuinely tinted sky-100 circle -- which made
+      // any near-white control (a drag handle, a FAB) register as the
+      // "icon in a coloured circle" slop tell. Gate on raw channel spread as
+      // well, which is stable at every lightness: tinted white spreads 0.02,
+      // sky-100 spreads 0.19, amber-50 spreads 0.09.
+      var spread = (Math.max(bg.r, bg.g, bg.b) - Math.min(bg.r, bg.g, bg.b)) / 255;
+      if (hsl(bg).s < 0.15 || spread < 0.08) return;
       if (el.querySelector("svg,img,i")) iconCircles++;
     });
     note("iconsInColouredCircles", iconCircles);

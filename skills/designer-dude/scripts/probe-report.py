@@ -31,7 +31,17 @@ WCAG_TRIGGERS = {"1.4.3", "1.4.11", "2.4.7", "1.1.1", "3.3.2", "2.5.8", "4.1.2",
 class Report:
     def __init__(self):
         self.rows = []
+        self.notes = []
         self.n = 0
+
+    def note(self, text):
+        """Something the run MEASURED and decided is not a defect.
+
+        Silence here reads as 'not checked'. An applied exception that nobody
+        can see gets re-measured by hand every round, which is how the same
+        twenty small buttons end up in three consecutive ledgers.
+        """
+        self.notes.append(text)
 
     def add(self, pillar, severity, measured, threshold, summary, evidence=None,
             sc=None, kind="rule", fix=None):
@@ -248,12 +258,37 @@ def analyse(payload):
               evidence=sel_list(fr.get("list"), extra=["text"]),
               fix="Add a :focus-visible ring token with >=3:1 against both the element and its surround.")
 
+    # The probe applies 2.5.8's Inline and Spacing exceptions itself, so this
+    # count is failures, not "everything small". Do not re-measure these by
+    # hand and do not re-raise the exempt ones next round.
     t24 = it.get("belowWcagTarget24") or {}
-    if t24.get("count"):
-        r.add("interaction", CRIT, f"{t24['count']} targets under 24x24 CSS px", ">=24x24 (2.5.8), aim 44",
-              sc="2.5.8", summary=f"{t24['count']} interactive targets are below the WCAG 2.5.8 minimum",
-              evidence=sel_list(t24.get("list"), extra=["w", "h", "text"]),
+    exempt = it.get("target24SpacingExempt") or {}
+    inline_exempt = it.get("target24InlineExemptCount") or 0
+    # A probe JSON written before the Spacing exception existed carries the
+    # UNFILTERED list. Describing it as "crowded" would put a claim in the
+    # report that nothing ever computed -- the exact fabricated certainty this
+    # rig exists to prevent. Say it is stale and demand a re-probe instead.
+    exceptions_computed = "target24SpacingExempt" in it
+    if t24.get("count") and exceptions_computed:
+        r.add("interaction", CRIT, f"{t24['count']} targets under 24x24 CSS px AND crowded",
+              ">=24x24 (2.5.8), aim 44",
+              sc="2.5.8", summary=f"{t24['count']} interactive targets fail WCAG 2.5.8: under 24x24 "
+                                  f"with another target inside the 24px spacing circle",
+              evidence=sel_list(t24.get("list"), extra=["w", "h", "text", "crowdedBy"]),
               fix="Grow the hit area with padding (keep the visual size) or a ::before overlay.")
+    elif t24.get("count"):
+        r.add("interaction", MAJOR, f"{t24['count']} targets under 24x24, exceptions NOT applied",
+              ">=24x24 (2.5.8), aim 44",
+              sc="2.5.8", summary=f"{t24['count']} targets measure under 24x24, but this probe JSON "
+                                  f"predates the 2.5.8 Spacing/Inline exception computation, so an "
+                                  f"unknown share of them CONFORM. Re-probe before quoting a failure "
+                                  f"or passing --wcag-fail.",
+              evidence=sel_list(t24.get("list"), extra=["w", "h", "text"]),
+              fix="Re-run the probe with the current probe.js, then read this row again.")
+    if exempt.get("count") or inline_exempt:
+        r.note(f"2.5.8 exceptions applied: {exempt.get('count', 0)} undersized targets pass the "
+               f"Spacing exception (nothing else within a 24px circle), {inline_exempt} pass the "
+               f"Inline exception. These are NOT failures — do not dock for them.")
     t44 = it.get("belowFittsTarget44") or {}
     if t44.get("count"):
         r.add("interaction", MINOR, f"{t44['count']} targets between 24 and 44px", "44px (Fitts)",
@@ -409,7 +444,9 @@ def analyse(payload):
               summary="Mobile widths were not measured — Responsiveness cannot be graded above provisional")
     for run in small:
         t = get(run, "interaction", "belowWcagTarget24", "count", default=0)
-        if t:
+        # Same staleness rule as above: without the exception pass this count
+        # is "everything small", not "everything failing".
+        if t and "target24SpacingExempt" in (get(run, "interaction", default={}) or {}):
             r.add("responsive", MAJOR, f"{t} sub-24px targets at {get(run,'meta','viewport','w')}px", "0",
                   sc="2.5.8", summary="Targets shrink below the minimum at mobile width",
                   evidence=sel_list(get(run, "interaction", "belowWcagTarget24", "list", default=[]), extra=["w", "h"]))
@@ -772,6 +809,12 @@ def main():
             if row["fix"]:
                 print(f"    fix: {row['fix']}")
             print()
+
+    if rep.notes:
+        print("-" * 78)
+        print("Measured and NOT counted (exceptions applied by the probe):")
+        for n in rep.notes:
+            print(f"  · {n}")
 
     print("-" * 78)
     print(f"AI Slop (measured layer): {grade}   (cumulative drop {drop:.2f} letters)")

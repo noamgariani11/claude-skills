@@ -90,7 +90,10 @@
   <input class="thin" type="email" placeholder="you@example.com">
   <label for="named">Named field</label>
   <input class="thin" id="named" type="text">
-  <button class="tiny naked-focus">×</button>
+  <!-- D12: two 16px targets butted together — undersized AND crowded, so
+       neither 2.5.8 exception applies. An ISOLATED small target is a different
+       thing and is tested in fixtures/clean.html, where it must NOT be flagged. -->
+  <button class="tiny naked-focus">×</button><button class="tiny naked-focus">+</button>
   <button class="slow r5">Submit</button>
 </form>
 
