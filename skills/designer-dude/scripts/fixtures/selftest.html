@@ -1,0 +1,132 @@
+<!doctype html>
+<!--
+  designer-dude probe fixture — a page with DELIBERATE, enumerated defects.
+
+  Purpose: prove the probe still detects what it claims to detect after any
+  edit. A measurement tool nobody re-validates drifts into confident silence,
+  which is worse than no tool: the scorecard keeps printing A because the
+  check stopped firing, not because the page got better.
+
+  Expected detections are listed in fixtures/EXPECTED.md. Run:
+    (probe the file:// URL, then)
+    python3 scripts/probe-report.py <probe.json> --expect-fixture
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>designer-dude probe fixture</title>
+<style>
+  /* D1: pure #000 on #fff, and a 2.4:1 muted grey that fails AA */
+  body { background:#ffffff; color:#000000; font-family: Inter, system-ui, sans-serif; margin:0; }
+  .muted { color:#a8a8a8; }                    /* D2: ~2.3:1 on white — AA fail */
+  .ok    { color:#3d3d3a; }                    /* passes */
+  /* D3: eight distinct radii = no scale */
+  .r1{border-radius:3px}.r2{border-radius:5px}.r3{border-radius:7px}
+  .r4{border-radius:9px}.r5{border-radius:11px}.r6{border-radius:13px}
+  .r7{border-radius:17px}.r8{border-radius:21px}
+  /* D4: off-4px-base spacing */
+  .odd { padding:7px 13px; margin-top:11px; }
+  /* D5: focus ring removed with no replacement */
+  .naked-focus { outline:none; }
+  /* D6: clickable div with no pointer cursor (default cursor) */
+  .fakebtn { cursor:default; background:#eee; padding:6px; display:inline-block; }
+  /* D7: blue -> purple gradient hero + gradient-clipped text */
+  .hero { background:linear-gradient(135deg,#4f46e5 0%,#a855f7 100%); padding:40px; text-align:center; }
+  .gradtext { background:linear-gradient(90deg,#6366f1,#c026d3); -webkit-background-clip:text;
+              background-clip:text; color:transparent; font-size:40px; letter-spacing:normal; }
+  /* D8: glassmorphism everywhere */
+  .glass { backdrop-filter: blur(12px); background:rgba(255,255,255,.4); padding:16px; }
+  /* D9: three-up feature grid, icons in coloured circles */
+  .features { display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; padding:32px; }
+  .iconcircle { width:48px; height:48px; border-radius:9999px; background:#6366f1;
+                display:flex; align-items:center; justify-content:center; }
+  /* D10: coloured left-border card */
+  .leftcard { border-left:3px solid #6366f1; padding:12px; }
+  /* D11: infinite animation, 900ms transition, no reduced-motion guard */
+  @keyframes spin { to { transform:rotate(360deg) } }
+  .spinner { animation: spin 1.1s linear infinite; width:20px; height:20px; border:2px solid #ccc; }
+  .slow { transition: all 900ms ease; }
+  /* D12: tiny target */
+  .tiny { width:16px; height:16px; padding:0; font-size:9px; }
+  /* D13: measure far too wide, leading too tight */
+  .wide-copy { max-width:none; line-height:1.15; font-size:16px; }
+  /* D14: field border below 3:1 */
+  input.thin { border:1px solid #e6e6e6; padding:8px; }
+  /* D15: centred everything */
+  .centred { text-align:center; }
+  /* D16: z-index sprawl */
+  /* D26: a type "scale" that is really a pile — repeated sizes so the
+     adjacent-ratio check has something to chew on */
+  .t13{font-size:13px}.t15{font-size:15px}.t19{font-size:19px}.t26{font-size:26px}
+  .z1{position:relative;z-index:9999}.z2{position:relative;z-index:5000}
+  .z3{position:relative;z-index:3000}.z4{position:relative;z-index:777}
+  .z5{position:relative;z-index:42}.z6{position:relative;z-index:7}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1 class="gradtext">Unlock the power of the future of AI 🚀</h1>
+  <p class="muted centred">Welcome to your all-in-one solution for everything. Powered by GPT-4.</p>
+  <span class="fakebtn" onclick="void 0">Get started</span>
+</header>
+
+<!-- D17: h1 -> h4 skips levels -->
+<h4 class="centred">Skipped a level on purpose</h4>
+
+<section class="features">
+  <div class="glass r1"><div class="iconcircle"><svg width="20" height="20"><circle cx="10" cy="10" r="8" fill="#fff"/></svg></div><h3>Fast</h3><p class="muted">Blazing fast performance for your workflow.</p></div>
+  <div class="glass r2"><div class="iconcircle"><svg width="20" height="20"><circle cx="10" cy="10" r="8" fill="#fff"/></svg></div><h3>Secure</h3><p class="muted">Enterprise-grade security built in.</p></div>
+  <div class="glass r3"><div class="iconcircle"><svg width="20" height="20"><circle cx="10" cy="10" r="8" fill="#fff"/></svg></div><h3>Simple</h3><p class="muted">Seamlessly integrate with your stack.</p></div>
+</section>
+
+<div class="leftcard r4 odd">A card with a coloured left border and off-base padding.</div>
+
+<p class="wide-copy ok">This paragraph is deliberately allowed to run the full width of the viewport with tight leading, so the measure check has something to catch. Typographic measure should sit between forty-five and seventy-five characters per line for comfortable reading, and this line will comfortably exceed that at any desktop width, which is exactly the point of putting it here in the fixture rather than trusting that a reviewer would notice it by eye on a real page somewhere else entirely. It keeps going so the character count is unambiguous.</p>
+
+<form class="odd">
+  <!-- D18: input with no label at all, and one with placeholder only -->
+  <input class="thin naked-focus" type="text">
+  <input class="thin" type="email" placeholder="you@example.com">
+  <label for="named">Named field</label>
+  <input class="thin" id="named" type="text">
+  <button class="tiny naked-focus">×</button>
+  <button class="slow r5">Submit</button>
+</form>
+
+<!-- D19: img with no alt and no dimensions -->
+<img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=">
+
+<!-- D20: icon-only button with no accessible name -->
+<button class="r6"><svg width="16" height="16"><rect width="16" height="16" fill="#333"/></svg></button>
+
+<!-- D21: duplicate ids -->
+<div id="dupe"></div><div id="dupe"></div>
+
+<!-- D22: aria-hidden wrapping something focusable -->
+<div aria-hidden="true"><a href="#nope">Hidden but focusable</a></div>
+
+<!-- D23: positive tabindex -->
+<a href="#x" tabindex="3" class="r7">Tab order hijack</a>
+
+<div class="spinner"></div>
+<p class="t13 ok">Thirteen pixel text.</p><p class="t13 ok">Thirteen again.</p>
+<p class="t15 ok">Fifteen pixel text.</p><p class="t15 ok">Fifteen again.</p>
+<p class="t19 ok">Nineteen pixel text.</p><p class="t19 ok">Nineteen again.</p>
+<p class="t26 ok">Twenty-six pixel text.</p><p class="t26 ok">Twenty-six again.</p>
+<div class="z1">z</div><div class="z2">z</div><div class="z3">z</div>
+<div class="z4">z</div><div class="z5">z</div><div class="z6">z</div>
+
+<!-- D24: horizontal overflow -->
+<div style="width:3000px; height:4px; background:#eee"></div>
+
+<!-- D25: a data table with no scope, no caption, numbers left-aligned -->
+<table class="r8">
+  <tr><th>Property</th><th>Rent</th><th>Status</th></tr>
+  <tr><td>101 Main St</td><td>$1,250</td><td>Occupied</td></tr>
+  <tr><td>202 Oak Ave</td><td>$2,400</td><td>Vacant</td></tr>
+</table>
+
+<footer class="centred muted odd">© 2026 Fixture. It's got straight quotes too.</footer>
+</body>
+</html>
