@@ -21,9 +21,18 @@ ready-to-paste headline. Extras that matter for repeat runs:
   --provisional a,b  pillars whose evidence was NOT captured this run: they
                      are capped and labelled, never allowed to read as A
   --wcag-fail        an unresolved WCAG 2.2 AA failure: caps Overall at C+
+  --perf-unmeasured  Core Web Vitals were never measured on a production
+                     build: caps Interaction & Performance at A-
   --baseline 78.5    prior overall; prints the delta and shouts on regression
   --json out.json    machine-readable scorecard for design-baseline.json
   --selftest         verify the grade tables and demotion maths are consistent
+
+Findings can also carry CREDITS ("kind": "credit"), which is how a pillar
+reaches A+. Demotion alone bounds a straight-A card at 92.00, so without
+credits the top eight points of the scale are unreachable by construction and
+"get this to 95" is a target no amount of work can satisfy. A credit is not a
+compliment: it names an A+ criterion from scoring.md, carries evidence, cites
+two or more surfaces, and only promotes a pillar that is otherwise defect-free.
 """
 
 import argparse
@@ -112,7 +121,93 @@ SUBSCORES = {
 
 WCAG_CAP = 75          # C+, and it maps back to the C+ band
 PROVISIONAL_CAP = 85   # B+: you cannot claim an A on evidence you did not capture
+PERF_UNMEASURED_CAP = 88   # A-: half of Interaction is perf, and you did not measure it
 CURRENCY_MAX_DAYS = 200
+
+# ---------------- A+ criteria ----------------
+#
+# Why this table exists. Findings mode starts every pillar at A and only ever
+# demotes, so the best a real product can score is a straight-A card = 92.00.
+# That made the top eight points of the scale unreachable by construction: a
+# team could build a bespoke type system with a genuine point of view and the
+# scorer had no way to say so, while "get this to 95" was a target no amount of
+# work could satisfy. The fix is NOT to hand out A+ when a gap needs closing --
+# that is grading your own homework, and --target still refuses to schedule it.
+# The fix is to make A+ falsifiable: a claim, against a named criterion, with
+# evidence, on more than one surface, on a pillar carrying zero open defects.
+#
+# One criterion per pillar, deliberately. Each is a CONJUNCTION -- every clause
+# must hold -- because a menu of alternatives is a menu of the easiest one.
+# These are the source of truth; scoring.md quotes them at greater length.
+A_PLUS_CRITERIA = {
+    "typography": (
+        "typography.voice-and-ratio",
+        "A face chosen and self-hosted for its voice (never Inter/Roboto/Arial/"
+        "system as the default that nobody picked), the scale on ONE ratio with "
+        "no near-duplicate steps, and tabular numerals everywhere numbers align.",
+    ),
+    "hierarchy": (
+        "hierarchy.singular-primary",
+        "One primary action per surface, argued against what users come to that "
+        "surface to do -- not merely tidy. The eye lands on the same element at "
+        "every probed viewport, and the second and third stops are also intended.",
+    ),
+    "spacing": (
+        "spacing.composed-grid",
+        "A grid that is felt, not just obeyed: one base unit, 6-8 named steps, "
+        "zero off-base values, and vertical rhythm that survives a long page and "
+        "a dense table on the same screen.",
+    ),
+    "color": (
+        "color.designed-dark-and-range",
+        "Semantic roles in a perceptual space (oklch), a dark theme designed "
+        "rather than inverted, accent under 10% of pixels, and no state that "
+        "relies on colour alone. AAA on body text where the palette allows.",
+    ),
+    "interaction": (
+        "interaction.states-and-vitals",
+        "All seven states designed for every interactive element, and Core Web "
+        "Vitals MEASURED inside budget on a production build (LCP <=2.5s, "
+        "INP <=200ms, CLS <0.1). Observation is not a measurement.",
+    ),
+    "content": (
+        "content.voice-with-a-point-of-view",
+        "Copy that could only belong to this product: domain nouns in the user's "
+        "vocabulary, empty states that name the next action, errors that name the "
+        "field and the fix, and a voice a reader could recognise unlabelled.",
+    ),
+    "a11y": (
+        "a11y.beyond-aa",
+        "Zero AA failures, a clean manual keyboard pass including focus return, "
+        "the 2.2 SCs most sites miss (2.4.11, 2.5.7, 2.5.8, 3.3.7, 3.3.8), and "
+        "at least one thing done for assistive tech that no checker asked for.",
+    ),
+    "responsive": (
+        "responsive.designed-breakpoints",
+        "Each breakpoint is a layout decision with its own reason, tables have a "
+        "real small-screen answer rather than a squeeze, and 320px is as "
+        "considered as 1440px.",
+    ),
+    "craft": (
+        "craft.decided-details",
+        "Every detail visibly answered a question: disciplined radius and shadow "
+        "scales, one light source, deterministic sort on ties, aligned decimals, "
+        "clean console, correct-DPR assets. Decided, not assembled.",
+    ),
+    "ia": (
+        "ia.predictable-object-model",
+        "A user can predict where a record lives before navigating there. Labels "
+        "are the user's words, deep links survive a refresh, and depth beyond two "
+        "levels is served by search.",
+    ),
+    "motion": (
+        "motion.signature-moment",
+        "Motion carries continuity or feedback throughout, honours "
+        "prefers-reduced-motion completely, and the product has one moment "
+        "someone would remember -- without animating a 200-row list.",
+    ),
+}
+CREDIT_MIN_SURFACES = 2   # excellence claimed from a single page scores the page
 
 
 def to_number(grade, where):
@@ -140,12 +235,42 @@ def next_letter_up(letter):
 
 # ---------------- findings mode ----------------
 
+def credit_problems(entry, pillar):
+    """Every reason this credit does not count. Empty list = it counts.
+
+    Deliberately strict and deliberately mechanical. A credit is the only way
+    the number goes UP on its own, so it is the one place where a generous
+    reading turns the whole scorecard into a mirror.
+    """
+    problems = []
+    criterion = (entry.get("criterion") or "").strip()
+    expected = A_PLUS_CRITERIA.get(pillar, ("", ""))[0]
+    if not criterion:
+        problems.append(f"no 'criterion' (expected '{expected}')")
+    elif criterion != expected:
+        problems.append(f"criterion '{criterion}' is not {pillar}'s A+ criterion "
+                        f"('{expected}')")
+    if not str(entry.get("evidence") or "").strip():
+        problems.append("no 'evidence' (probe path, measurement or screenshot)")
+    surfaces = entry.get("surfaces") or []
+    if not isinstance(surfaces, list) or len(surfaces) < CREDIT_MIN_SURFACES:
+        problems.append(f"needs 'surfaces' naming >={CREDIT_MIN_SURFACES} probed surfaces "
+                        f"(got {len(surfaces) if isinstance(surfaces, list) else 0}) -- "
+                        f"excellence shown on one page scores the page")
+    status = (entry.get("status") or "confirmed").strip().lower()
+    if status not in {"confirmed", "verified", "fixed"}:
+        problems.append(f"status '{status}' is not confirmed")
+    return problems
+
+
 def grades_from_findings(path, verbose=True):
     with open(path) as fh:
         doc = json.load(fh)
     findings = doc if isinstance(doc, list) else doc.get("findings", [])
 
     per = {k: [] for k in PILLAR_KEYS}
+    credits = {k: [] for k in PILLAR_KEYS}
+    rejected_credits = []
     unknown, ignored, candidates = [], 0, 0
     for f in findings:
         pillar = (f.get("pillar") or "").strip()
@@ -153,6 +278,13 @@ def grades_from_findings(path, verbose=True):
         sev = (f.get("severity") or "").strip().lower()
         if pillar not in per:
             unknown.append(pillar or "(none)")
+            continue
+        if (f.get("kind") or "").strip().lower() == "credit" or sev == "credit":
+            problems = credit_problems(f, pillar)
+            if problems:
+                rejected_credits.append((pillar, f.get("id") or "(no id)", problems))
+            else:
+                credits[pillar].append(f)
             continue
         if status in DOES_NOT_COUNT:
             ignored += 1
@@ -174,17 +306,34 @@ def grades_from_findings(path, verbose=True):
         print(f"WARNING: {candidates} findings still have status 'candidate'. A candidate is")
         print("         a grep or a threshold breach, NOT a confirmed defect. Confirm or")
         print("         reject each one before quoting this score anywhere.")
+    if rejected_credits and verbose:
+        print("CREDITS NOT COUNTED (a credit that does not meet the bar is not a grade):")
+        for pillar, ident, problems in rejected_credits:
+            print(f"  {pillar}/{ident}: " + "; ".join(problems))
 
     grades, detail = {}, {}
     for key in PILLAR_KEYS:
         items = per[key]
         cost = sum(SEVERITY_COST[(f.get("severity") or "").lower()] for f in items)
         value = max(40.0, GRADE_VALUES["A"] - cost)
+        # A credit promotes A -> A+, and ONLY from a clean A. A pillar carrying
+        # an open defect cannot be "considered and delightful" at the same time,
+        # so a credit never cancels a demotion -- it cannot be used to buy back
+        # points, only to record that a defect-free pillar went further.
+        credited = None
+        if credits[key]:
+            if cost == 0:
+                credited = credits[key][0]
+                value = float(GRADE_VALUES["A+"])
+            else:
+                credited = False   # claimed, blocked by open findings
         grades[key] = to_letter(value)
         detail[key] = {
             "raw": normalize(value), "cost": normalize(cost), "count": len(items),
             "bySeverity": {s: sum(1 for f in items if (f.get("severity") or "").lower() == s)
                            for s in SEVERITY_COST},
+            "credit": (credited.get("id") or credited.get("criterion")) if credited else None,
+            "creditBlocked": credited is False,
         }
     return grades, detail, doc, ignored
 
@@ -235,6 +384,40 @@ def path_to_target(grades, target, ceiling_letter="A"):
             moves.append((name, start[key], cur[key], gain, weight))
     moves.sort(key=lambda m: -m[3])
     return moves, total
+
+
+def all_at(letter):
+    """Composite of a card where every pillar is `letter`."""
+    return normalize(sum(GRADE_VALUES[letter] * w / 100 for _, _, w in PILLARS))
+
+
+def credit_plan(target, grades=None):
+    """How many pillars must earn an A+ credit to reach a target above 92.
+
+    The findings ceiling is a straight-A card = 92.00, so any target above that
+    is a claim about excellence, not a backlog of fixes. This prints exactly
+    which pillars would have to clear their A+ criterion -- the arithmetic that
+    otherwise gets hand-derived once per campaign and then argued about.
+
+    Greedy by weight, which is optimal here: every promotion is the same
+    +5 letter-points, so the cheapest route is always the heaviest pillar.
+    """
+    base = {k: "A" for k in PILLAR_KEYS}
+    if grades:
+        for k in PILLAR_KEYS:
+            cur = grades.get(k, "A").replace("−", "-")
+            # Assume the pillar reaches A first; credits sit on top of that.
+            base[k] = "A+" if cur == "A+" else "A"
+    total = normalize(sum(GRADE_VALUES[base[k]] * w / 100 for k, _, w in PILLARS))
+    order = sorted((p for p in PILLARS if base[p[0]] != "A+"),
+                   key=lambda p: -p[2])
+    needed = []
+    for key, name, weight in order:
+        if total >= target:
+            break
+        total = normalize(total + (GRADE_VALUES["A+"] - GRADE_VALUES["A"]) * weight / 100)
+        needed.append((name, weight, total))
+    return needed, total
 
 
 def feasibility(target):
@@ -329,12 +512,67 @@ def selftest():
     if to_letter(worst) != "F":
         failures.append(f"  all-F card scores {worst} -> {to_letter(worst)}")
 
+    if to_letter(PERF_UNMEASURED_CAP) != "A-":
+        failures.append(f"  PERF_UNMEASURED_CAP {PERF_UNMEASURED_CAP} maps to "
+                        f"{to_letter(PERF_UNMEASURED_CAP)}, expected A-")
+
+    # Every pillar must have exactly one A+ criterion, and the ids must be
+    # unique and namespaced to their pillar -- a credit naming another pillar's
+    # criterion is the obvious way to game this.
+    for key, _, _ in PILLARS:
+        if key not in A_PLUS_CRITERIA:
+            failures.append(f"  no A+ criterion defined for pillar '{key}'")
+    for key, (cid, text) in A_PLUS_CRITERIA.items():
+        if key not in PILLAR_KEYS:
+            failures.append(f"  A+ criterion '{cid}' names non-pillar '{key}'")
+        elif not cid.startswith(key + "."):
+            failures.append(f"  criterion id '{cid}' is not namespaced to '{key}'")
+        if len(text) < 40:
+            failures.append(f"  criterion '{cid}' has no substantive definition")
+    ids = [c for c, _ in A_PLUS_CRITERIA.values()]
+    if len(set(ids)) != len(ids):
+        failures.append("  duplicate A+ criterion ids")
+
+    # The ceiling arithmetic that Mode F quotes must come from here, not from
+    # anyone's head: a straight-A card is 92.00 and only credits go above it.
+    if all_at("A") != 92.0:
+        failures.append(f"  straight-A card scores {all_at('A')}, expected 92.00")
+    if all_at("A+") != 97.0:
+        failures.append(f"  all-A+ card scores {all_at('A+')}, expected 97.00")
+    needed, reached = credit_plan(95.0)
+    if reached < 95.0 or len(needed) < 2:
+        failures.append(f"  credit_plan(95) returned {len(needed)} credits reaching {reached}")
+    if credit_plan(92.0)[0]:
+        failures.append("  credit_plan(92) asks for credits to reach the findings ceiling")
+    if credit_plan(99.0)[1] < all_at("A+") - 0.001:
+        failures.append("  credit_plan(99) did not exhaust every pillar before giving up")
+
+    # A credit must be rejected for each missing element, and accepted only
+    # when all of them are present.
+    good = {"kind": "credit", "criterion": A_PLUS_CRITERIA["motion"][0],
+            "evidence": ".design/probe-dashboard.json", "surfaces": ["a", "b"],
+            "status": "confirmed"}
+    if credit_problems(good, "motion"):
+        failures.append("  a complete credit was rejected: " +
+                        "; ".join(credit_problems(good, "motion")))
+    for drop, why in [("criterion", "missing criterion"), ("evidence", "missing evidence"),
+                      ("surfaces", "missing surfaces")]:
+        bad = {k: v for k, v in good.items() if k != drop}
+        if not credit_problems(bad, "motion"):
+            failures.append(f"  credit accepted despite {why}")
+    if not credit_problems({**good, "surfaces": ["only-one"]}, "motion"):
+        failures.append("  credit accepted from a single surface")
+    if not credit_problems(good, "craft"):
+        failures.append("  motion's criterion was accepted as a credit for craft")
+
     if failures:
         print("SELFTEST FAILED:")
         print("\n".join(failures))
         return 1
     print(f"selftest ok — {len(seen)} grades round-trip, weights sum to 100, "
-          f"WCAG cap -> C+, provisional cap -> B+, demotion maths consistent")
+          f"WCAG cap -> C+, provisional cap -> B+, perf cap -> A-, demotion maths "
+          f"consistent, {len(ids)} A+ criteria, findings ceiling {all_at('A'):.2f}, "
+          f"credit gate rejects incomplete claims")
     warn = currency_warning()
     if warn:
         print("note: " + warn)
@@ -356,6 +594,9 @@ def main():
     p.add_argument("--slop", help="AI Slop grade (from probe-report.py, or judged by eye)")
     p.add_argument("--wcag-fail", action="store_true",
                    help="Unresolved WCAG AA failure: caps Overall at C+")
+    p.add_argument("--perf-unmeasured", action="store_true",
+                   help="Core Web Vitals not measured on a production build: "
+                        "caps Interaction & Performance at A-")
     p.add_argument("--provisional", default="",
                    help="Comma-separated pillars whose evidence was NOT captured; capped at B+")
     p.add_argument("--baseline", type=float, help="Prior overall score, to report a delta")
@@ -419,11 +660,24 @@ def main():
     print("Weighted composite")
     print("-" * 66)
     total = 0.0
+    credited_pillars, blocked_credits = [], []
     for flag, name, weight in PILLARS:
         value = to_number(grades[flag], name)
         note = ""
+        if detail.get(flag, {}).get("credit"):
+            credited_pillars.append((flag, detail[flag]["credit"]))
+            note += f"  [credit {detail[flag]['credit']}]"
+        if detail.get(flag, {}).get("creditBlocked"):
+            blocked_credits.append(flag)
+        # Perf is half of Interaction & Performance. Grading it on observation
+        # and then printing a letter is exactly the fabricated certainty this
+        # skill exists to avoid, so an unmeasured pillar cannot read A or A+.
+        if flag == "interaction" and args.perf_unmeasured and value > PERF_UNMEASURED_CAP:
+            note += f"  (Core Web Vitals unmeasured: capped from {grades[flag]})"
+            value = PERF_UNMEASURED_CAP
+            grades[flag] = to_letter(value)
         if flag in provisional and value > PROVISIONAL_CAP:
-            note = f"  (provisional: capped from {grades[flag]})"
+            note += f"  (provisional: capped from {grades[flag]})"
             value = PROVISIONAL_CAP
             grades[flag] = to_letter(value)
         if flag in detail and detail[flag]["count"]:
@@ -436,6 +690,24 @@ def main():
               f"{contribution:6.2f}{note}")
     print("-" * 66)
     total = normalize(total)
+
+    if credited_pillars:
+        print(f"  A+ CREDITS ({len(credited_pillars)} of {len(PILLARS)} pillars) — each on a "
+              f"named criterion, with evidence, on 2+ surfaces:")
+        for flag, ident in credited_pillars:
+            print(f"    {flag}: {ident}")
+        if len(credited_pillars) > 4:
+            print("    ** A+ is 'considered and delightful, rare'. More than four pillars")
+            print("       claiming it is the shape of a scorecard that has stopped")
+            print("       measuring. Re-read the criteria in scoring.md before quoting this. **")
+    if blocked_credits:
+        print("  CREDITS CLAIMED BUT BLOCKED by open findings on the same pillar: " +
+              ", ".join(blocked_credits))
+        print("    A credit records that a defect-free pillar went further. It never")
+        print("    buys back points from a defect. Fix those findings first.")
+    if args.perf_unmeasured:
+        print("  PERF UNMEASURED: Core Web Vitals were not measured on a production build.")
+        print("    Say so in the report; do not quote observed smoothness as a vitals result.")
 
     if overrides:
         print("  MANUAL OVERRIDES (derived -> yours):")
@@ -500,6 +772,32 @@ def main():
         print("  What the target costs, before choosing where to work:")
         for line in feasibility(args.target):
             print(line)
+        findings_ceiling = all_at("A")
+        if args.target > findings_ceiling:
+            print()
+            print(f"  ** {args.target:g} IS ABOVE THE FINDINGS CEILING OF {findings_ceiling:.2f}. **")
+            print("     Fixing every defect on every pillar lands on a straight-A card and")
+            print("     stops there. Above it, the number is a claim about excellence, and")
+            print("     the only way up is an A+ credit per scoring.md: a named criterion,")
+            print("     evidence, two or more surfaces, zero open findings on that pillar.")
+            needed, reached = credit_plan(args.target, grades)
+            if not needed and reached >= args.target:
+                print(f"     Already there at {reached:.2f}.")
+            elif not needed:
+                print(f"     Even an all-A+ card reaches only {all_at('A+'):.2f}. Pick a real number.")
+            else:
+                print(f"     Cheapest route: {len(needed)} credit(s), heaviest pillars first.")
+                for name, weight, running in needed:
+                    print(f"       + {name:<28} (w{weight:>3})  -> {running:6.2f}")
+                if reached < args.target:
+                    print(f"     Every pillar at A+ still reaches only {reached:.2f}.")
+                else:
+                    print(f"     That is {len(needed)} of {len(PILLARS)} dimensions you would be "
+                          f"declaring 'considered and")
+                    print("     delightful, rare'. If that is not true of the product, the honest")
+                    print("     move is to report the ceiling and hand back a design brief")
+                    print("     (mode-f-campaign.md, 'When the ceiling is arithmetic') rather")
+                    print("     than award the credits.")
         print()
         if capped:
             print("  ** Overall is CAPPED at C+ by an unresolved WCAG failure. No amount")
@@ -509,7 +807,9 @@ def main():
         if not moves and reached >= args.target:
             print(f"  Already at {reached:.2f}.")
         elif not moves:
-            print(f"  Nothing left to move below A: ceiling reached at {reached:.2f}.")
+            print(f"  Nothing left to move below A: findings ceiling reached at {reached:.2f}.")
+            print("  Every further point is an A+ credit, and a credit is earned by the")
+            print("  product being better, not by the review being run again.")
         else:
             print(f"  {'Pillar':<28} {'now':>3} -> {'to':<3} {'points':>7}  weight")
             for name, frm, to, gain, weight in moves:
@@ -519,7 +819,7 @@ def main():
                 print("    where the next run's effort belongs.")
             else:
                 print(f"  → only reaches {reached:.2f} with every listed pillar at A.")
-                print(f"    {args.target:g} is NOT reachable from here without an A+ somewhere:")
+                print(f"    {args.target:g} is NOT reachable from here without an A+ credit:")
                 print("    say that plainly instead of grinding another run for 0.4 points.")
             if capped:
                 print("  (all of it is moot until the WCAG failure is resolved)")
@@ -534,6 +834,9 @@ def main():
             json.dump({
                 "overall": normalize(total), "letter": letter,
                 "cappedByWcag": capped, "provisional": provisional,
+                "perfUnmeasured": bool(args.perf_unmeasured),
+                "credits": {flag: ident for flag, ident in credited_pillars},
+                "findingsCeiling": all_at("A"),
                 "pillars": {k: grades[k] for k in PILLAR_KEYS},
                 "consistency": grades.get("consistency"),
                 "subScores": {label: g for label, g in parts},

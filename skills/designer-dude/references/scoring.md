@@ -76,6 +76,80 @@ A finding stops counting only at `status: "fixed"` or `"rejected"`.
 **`"deferred"` still counts** — a defect nobody can fix from here is still a
 defect the user is shipping.
 
+### The findings ceiling is 92, and credits are the only way past it
+
+Demotion-only scoring has a hard consequence worth stating plainly: **fixing
+every defect on every pillar produces a straight-A card, which scores exactly
+92.00.** So the top eight points of the scale were unreachable by construction.
+Two things went wrong because of that:
+
+- A product that genuinely earned more — a bespoke type system, a voice, a
+  motion moment someone remembers — had no way to be told apart from one that
+  merely had no open findings.
+- "Get this to 95" was a target no amount of work could satisfy, which is only
+  discoverable by grinding rounds until the script says *nothing left to move*.
+
+The fix is **not** to award A+ when a gap needs closing — that is grading your
+own homework, and `--target` still refuses to schedule an A+. The fix is to
+make A+ falsifiable. A pillar reaches A+ by carrying a **credit**:
+
+```json
+{ "id": "CREDIT-001", "pillar": "typography", "kind": "credit",
+  "criterion": "typography.voice-and-ratio",
+  "evidence": ".design/probe-dashboard.json — 8 steps, ratio 1.25, 0 near-duplicates",
+  "surfaces": ["dashboard", "properties", "landing"],
+  "status": "confirmed" }
+```
+
+`score.py` counts it only if **all** of these hold, and prints the reason when
+it does not:
+
+| Gate | Why |
+|---|---|
+| `criterion` is that pillar's exact A+ criterion id | A credit names the bar it cleared. Another pillar's id does not count. |
+| `evidence` is non-empty | Same rule as every finding: a claim without evidence is a guess. |
+| `surfaces` names ≥2 probed surfaces | Excellence shown on one page scores the page, not the product. |
+| `status` is confirmed / verified | A candidate credit is an opinion. |
+| the pillar has **zero** unresolved findings | A credit records that a defect-free pillar went further. It never buys points back from a defect. |
+
+`--target` above 92 prints exactly how many credits the number needs, heaviest
+pillar first, and says what claiming them would mean. Four or more credits on
+one card triggers a warning: A+ is *rare*, and a card mostly made of it has
+stopped measuring.
+
+### The A+ criteria (one per pillar, each a conjunction)
+
+These live in `score.py` (`A_PLUS_CRITERIA`) so they are executable rather than
+remembered. Every clause must hold — a menu of alternatives is a menu of the
+easiest one.
+
+| Pillar | Criterion id | A+ means |
+|---|---|---|
+| Typography | `typography.voice-and-ratio` | A face chosen and self-hosted for its voice (never Inter/Roboto/Arial/system-as-default), the scale on ONE ratio with no near-duplicate steps, tabular numerals everywhere numbers align. |
+| Visual Hierarchy | `hierarchy.singular-primary` | One primary action per surface, argued against what users come to that surface to do — not merely tidy. Same first stop at every probed viewport, and the second and third stops are also intended. |
+| Spacing & Layout | `spacing.composed-grid` | A grid that is felt, not just obeyed: one base unit, 6–8 named steps, zero off-base values, rhythm that survives a long page and a dense table on the same screen. |
+| Color & Contrast | `color.designed-dark-and-range` | Semantic roles in oklch, a dark theme designed rather than inverted, accent under 10% of pixels, no state carried by colour alone, AAA body text where the palette allows. |
+| Interaction & Perf | `interaction.states-and-vitals` | All seven states designed for every interactive element, **and** Core Web Vitals measured inside budget on a production build. Observation is not a measurement. |
+| Content & Voice | `content.voice-with-a-point-of-view` | Copy that could only belong to this product: the user's domain nouns, empty states that name the next action, errors that name the field and the fix, a voice recognisable unlabelled. |
+| Accessibility | `a11y.beyond-aa` | Zero AA failures, a clean manual keyboard pass including focus return, the 2.2 SCs most sites miss, and at least one thing done for assistive tech that no checker asked for. |
+| Responsiveness | `responsive.designed-breakpoints` | Each breakpoint is a decision with its own reason, tables have a real small-screen answer, 320px is as considered as 1440px. |
+| Craft | `craft.decided-details` | Every detail visibly answered a question: disciplined radius and shadow scales, one light source, deterministic tie-breaks, aligned decimals, clean console, correct-DPR assets. |
+| Information Architecture | `ia.predictable-object-model` | A user can predict where a record lives before navigating there. Labels are the user's words, deep links survive a refresh, depth beyond two levels is served by search. |
+| Motion | `motion.signature-moment` | Motion carries continuity or feedback throughout, honours `prefers-reduced-motion` completely, and the product has one moment someone would remember — without animating a 200-row list. |
+
+If you cannot point at the evidence for every clause, the pillar is an A. That
+is not a failure; **A is the grade for excellent work with nothing wrong with
+it.** A+ is for work that went further than that, and it should stay rare.
+
+### Performance is half of Interaction, and it is usually ungraded
+
+`interaction.states-and-vitals` cannot be claimed from watching the page feel
+smooth. If Core Web Vitals were not measured on a **production** build, pass
+`--perf-unmeasured`: the pillar is capped at A− and the report says so. Dev
+server numbers are not evidence, and a pillar graded on half its definition
+should not read A. `mode-d-review.md` has the recipe for getting a production
+build up when the obvious command refuses.
+
 ---
 
 ## The evidence rule
@@ -121,7 +195,8 @@ landing cold:
 
 A pillar earns an A only if the eye flows through it without effort.
 
-**Bands:** **A+** considered and delightful, rare · **A** strong, one nit at
+**Bands:** **A+** considered and delightful, rare — and only via a credit
+against the pillar's criterion (above) · **A** strong, one nit at
 most · **A−** strong with a rough edge · **B+/B/B−** solid, real issues ·
 **C+/C/C−** functional, generic, or sloppy · **D** the eye is working against
 it · **F** actively hurts the product.
@@ -349,3 +424,15 @@ mechanics:
    loud; an unexplained override is how a scorecard stops measuring anything.
 5. **Regressions get reported first.** `--baseline` shouts. Put that at the top
    of the report, not the bottom.
+6. **A credit is evidence, not enthusiasm.** It names a criterion, carries
+   evidence, cites 2+ surfaces, and sits on a pillar with nothing open. Writing
+   one to close a gap in a target is the single fastest way to turn this
+   scorecard into a mirror — and the ledger will show you did it, because the
+   credit is a row in the findings file forever.
+7. **Never award a credit and a fix in the same breath.** If a round fixed the
+   pillar's last defect, the credit belongs to the *next* round, after a fresh
+   probe confirms the fix held.
+8. **Report the verdict beside the number.** Every scorecard ends with one
+   plain-language line: would you ship this, and would you show it to another
+   designer? If that line and the number disagree, the line is the finding —
+   say so, and name what the rubric missed.
