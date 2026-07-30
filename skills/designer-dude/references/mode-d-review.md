@@ -162,9 +162,24 @@ Rules the script enforces, so do not fight them: eye-only pillars need an
 explicit letter; pillars without captured evidence go in `--provisional` and cap
 at B+; an unresolved WCAG AA failure caps Overall at C+.
 
-Grade the **cross-page consistency** letter only after probing 3+ surfaces —
-same type hierarchy, same radius scale, same accent usage. It feeds Brand
-Coherence.
+Grade the **cross-page consistency** letter only after probing 3+ surfaces. Get
+the mechanical half measured rather than felt:
+
+```bash
+python3 $S/probe-report.py --compare .design/probe-*.json
+```
+
+It reports whether the primary face, radius scale, type scale and spacing scale
+are shared, names the one-off tokens ("only this surface uses radius 22"), and
+suggests a letter. Confirm it against the screenshots before passing
+`--consistency`: matching tokens are necessary for a product to look like
+itself, not sufficient.
+
+One caveat worth knowing: state coverage (hover, focus-visible, disabled) is
+measured by matching stylesheet rules, which **cannot be read across origins**.
+On a page whose CSS is served from a CDN the probe reports
+`inaccessibleStylesheets` and `probe-report.py` refuses to grade it rather than
+reporting 0% coverage as a defect. Probe the local build for that signal.
 
 ---
 

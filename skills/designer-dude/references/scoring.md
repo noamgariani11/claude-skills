@@ -33,6 +33,9 @@ python3 $S/probe-report.py .design/probe-<page>.json \
 #    sees (hierarchy, voice, IA, taste). Edit findings-<page>.json:
 #    set "status": "confirmed" | "rejected", and add your own entries.
 
+# 3b. CROSS-SURFACE consistency — measured, not felt (needs 3+ probed surfaces)
+python3 $S/probe-report.py --compare .design/probe-*.json
+
 # 4. GRADE — derived from the confirmed findings
 python3 $S/score.py --findings .design/findings-<page>.json \
         --hierarchy B --ia B+ --consistency B --target 90
@@ -86,7 +89,7 @@ defect the user is shipping.
 | Visual Hierarchy | a screenshot you actually looked at, at ≥2 viewports |
 | Spacing & Layout | probe run + a screenshot |
 | Color & Contrast | probe contrast pass, both themes if a dark mode exists |
-| Interaction & Performance | probe focus/cursor/target pass + lab perf, states exercised |
+| Interaction & Performance | probe focus/cursor/target pass, state-rule coverage, lab perf |
 | Content & Voice | you read the copy on the page |
 | Accessibility | probe a11y pass **plus** a manual keyboard pass |
 | Responsiveness | probe at 320 / 768 / 1440 minimum |
@@ -172,6 +175,14 @@ values, or **4.1.1 Parsing, which is obsolete** — never dock for it.
   check** (do 3+ pages look like one product — same type hierarchy, same radius
   scale, same accent usage?). Pass it as `--consistency`. It deliberately does
   not reuse Typography; that is already inside Craft.
+
+  `probe-report.py --compare <probe json...>` measures the mechanical half:
+  whether the primary type face, radius scale, type scale and spacing scale are
+  shared across surfaces, which surfaces use a token nothing else uses, and how
+  far accent share varies. It prints a **suggested** letter. Treat it as
+  suggested: matching tokens are necessary for a product to look like itself,
+  not sufficient. Calibration: three pages of one design system score B, three
+  different companies score F.
 - **Slop** — the standalone A–F grade below.
 
 ### Grade values and bands

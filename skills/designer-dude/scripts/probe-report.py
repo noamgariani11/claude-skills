@@ -18,6 +18,7 @@ finding on its own -- see the confirmation rules in mode-d-review.md.
 
 import argparse
 import json
+import re
 import sys
 
 # Severity vocabulary shared with scoring.md and score.py.
@@ -265,6 +266,49 @@ def analyse(payload):
               summary="Clickable elements render the default cursor — a signifier failure (Norman)",
               evidence=sel_list(mp.get("list"), extra=["cursor", "text"]),
               fix="Add cursor-pointer to the interactive base class, not per component.")
+
+    # ---- designed states (measured from stylesheet rules) ----
+    st = get(primary, "states", default={})
+    if st:
+        blind = st.get("inaccessibleStylesheets", 0)
+        readable = st.get("stylesheetsRead", 0)
+        n = st.get("interactiveElements", 0)
+        if blind and blind > readable:
+            # Most CSS is cross-origin, so rule matching sees almost nothing. A
+            # 0% coverage number here means UNMEASURED, and reporting it as a
+            # finding would invent a catastrophic defect on a site that is fine.
+            r.add("interaction", PETTY,
+                  f"{blind} stylesheets unreadable (cross-origin) vs {readable} readable",
+                  "same-origin CSS", kind="rule",
+                  summary="State coverage could not be measured: most CSS is cross-origin. "
+                          "Interaction stays provisional; exercise the states by hand.",
+                  fix="Run the probe against the local build, where the CSS is same-origin.")
+        elif n:
+            hov = st.get("hoverCoverage")
+            fv = st.get("focusVisibleCoverage")
+            if hov is not None and hov < 60:
+                r.add("interaction", MAJOR if hov < 25 else MINOR,
+                      f"{hov}% of {n} interactive elements have a :hover rule", ">=90%",
+                      summary=f"{st.get('missingHoverCount', 0)} interactive elements have no hover "
+                              f"state defined anywhere in the CSS that matches them",
+                      evidence=sel_list(st.get("missingHoverExamples"), extra=["text"]),
+                      fix="Put hover on the interactive base class rather than per component.")
+            if fv is not None and fv < 40 and st.get("withFocusRule", 0) == 0:
+                r.add("interaction", MAJOR,
+                      f"{fv}% of interactive elements have a :focus-visible rule", ">=90%",
+                      sc="2.4.7",
+                      summary="Most interactive elements have no focus-visible rule matching them; "
+                              "keyboard users are relying on the UA default, if anything")
+            elif fv is not None and fv < 40:
+                r.add("interaction", MINOR,
+                      f"{fv}% use :focus-visible ({st.get('withFocusRule')} use plain :focus)",
+                      ":focus-visible", summary="Plain :focus shows a ring on mouse click too")
+            if st.get("disabledControlsPresent") and st.get("withDisabledRule", 0) == 0:
+                r.add("interaction", MINOR,
+                      f"{st['disabledControlsPresent']} disabled controls, no :disabled styling",
+                      "designed disabled state",
+                      summary="Disabled controls are present but nothing styles the disabled state, "
+                              "so unavailable and available read the same")
 
     perf = payload.get("performance") or {}
     if perf:
@@ -534,14 +578,170 @@ HUMAN_ONLY = {
 }
 
 
+def cross_surface(paths):
+    """Measure whether several surfaces look like ONE product.
+
+    Brand Coherence asks that question and the answer was previously a letter
+    somebody felt. Type voice, radius scale, spacing scale and accent
+    discipline either match across surfaces or they do not, and that is
+    countable. It stays a SUGGESTION -- consistency of system tokens is
+    necessary for a product to look like itself, not sufficient.
+    """
+    def norm_font(name):
+        # `anthropicSans`, `Anthropic Sans` and `"Anthropic Sans"` are one face.
+        # Comparing raw computed strings reports 0% shared type voice across
+        # pages of the SAME product, which is a bug in the comparison rather
+        # than a finding about the product.
+        return re.sub(r"[^a-z0-9]", "", str(name).lower())
+
+    def norm_num(v):
+        try:
+            return str(int(round(float(v))))     # 9.6 and 10 are the same step
+        except (TypeError, ValueError):
+            return str(v)
+
+    surfaces = []
+    seen_labels = {}
+    for p in paths:
+        with open(p) as fh:
+            payload = json.load(fh)
+        runs = payload.get("runs", [])
+        light = [x for x in runs if not x.get("tag", "").startswith(("dark", "reduced"))]
+        if not light:
+            continue
+        primary = max(light, key=lambda x: get(x, "meta", "viewport", "w", default=0))
+        label = payload.get("label") or p
+        if label in seen_labels:                 # keep labels distinguishable
+            seen_labels[label] += 1
+            label = f"{label}#{seen_labels[label]}"
+        else:
+            seen_labels[label] = 1
+        surfaces.append({
+            "label": label,
+            "fonts": {norm_font(f["value"]) for f in get(primary, "typography", "families", default=[])},
+            # families is ordered by usage, so [0] is the face doing the work.
+            "primaryFont": norm_font((get(primary, "typography", "families", default=[{}])[:1] or [{}])[0].get("value", "")),
+            "sizes": {norm_num(x) for x in get(primary, "typography", "sizesUsedTwicePlus", default=[])},
+            # Prefer the full value sets; fall back to top-N for probe JSON
+            # written before probe.js exported them.
+            "radii": {norm_num(v) for v in (get(primary, "system", "radius", "values", default=None)
+                      or [r["value"] for r in get(primary, "system", "radius", "top", default=[])])},
+            "spacing": {norm_num(v) for v in (get(primary, "system", "spacing", "values", default=None)
+                        or [s["value"] for s in get(primary, "system", "spacing", "top", default=[])])},
+            "textColors": {c["value"] for c in get(primary, "color", "textColors", default=[])},
+            "accent": get(primary, "color", "accentPixelShare", default=0),
+            "shadows": get(primary, "system", "shadow", "distinct", default=0),
+        })
+
+    if len(surfaces) < 2:
+        print("Need at least 2 probe files to compare. Pass 3+ for a Brand Coherence letter.")
+        return 2
+
+    print(f"Cross-surface consistency — {len(surfaces)} surfaces")
+    print("=" * 78)
+    for s in surfaces:
+        print(f"  {s['label']:<22} fonts={len(s['fonts'])} radii={len(s['radii'])} "
+              f"shadows={s['shadows']} accent={s['accent']}%")
+    print("-" * 78)
+
+    def overlap(key):
+        """Overlap coefficient: shared / smallest set, NOT shared / union.
+
+        The question is "do these surfaces share a vocabulary", not "do they use
+        it equally often". A dense table legitimately uses more radii than a
+        settings page; Jaccard-over-union punishes it for the extra values and
+        reported F for three pages of one design system. Dividing by the
+        smallest set asks the right question: is the smaller surface's
+        vocabulary a subset of the others'.
+        """
+        sets = [s[key] for s in surfaces if s[key]]
+        if not sets:
+            return 1.0, set(), set()
+        inter = set.intersection(*sets)
+        union = set.union(*sets)
+        smallest = min(len(x) for x in sets)
+        return (len(inter) / smallest if smallest else 1.0), inter, union
+
+    jaccard = overlap   # keep the call sites below reading naturally
+
+    penalties = []
+    rows = []
+    # Type VOICE is the primary face, not the family set: a page that also loads
+    # a mono face for one code sample has not changed its voice, and requiring
+    # the whole set to intersect reported 0% shared voice across three pages of
+    # one design system.
+    primaries = {s["primaryFont"] for s in surfaces if s["primaryFont"]}
+    if len(primaries) > 1:
+        penalties.append(("type voice", 0, 3))
+    print(f"  {'type voice':<16} " +
+          ("consistent" if len(primaries) <= 1 else "DIFFERS") +
+          f"   (primary face per surface: " +
+          ", ".join(f"{s['label'].split('#')[0]}={s['primaryFont'] or '?'}" for s in surfaces) + ")")
+
+    # weight 0 = reported but never penalised. The font SET differs the moment
+    # one surface renders a code sample in mono, and text-colour sets differ the
+    # moment one surface has an inverted section: both are normal, and
+    # penalising them reported drift between pages that share one system. Voice
+    # is covered by the primary-face check above.
+    for key, label, weight, floor in [("fonts", "font set (info)", 0, 0.5),
+                                      ("radii", "radius scale", 2, 0.6),
+                                      ("sizes", "type scale", 2, 0.6),
+                                      ("spacing", "spacing scale", 2, 0.6),
+                                      ("textColors", "text colours (info)", 0, 0.3)]:
+        share, inter, union = jaccard(key)
+        rows.append((label, share, len(inter), len(union), floor))
+        if share < floor and weight:
+            penalties.append((label, share, weight))
+    for label, share, inter, union, floor in rows:
+        flag = "  <- drift" if share < floor else ""
+        print(f"  {label:<16} {share * 100:5.1f}% shared   ({inter} common of {union} distinct){flag}")
+
+    accents = [s["accent"] for s in surfaces]
+    spread = max(accents) - min(accents)
+    print(f"  {'accent share':<16} {min(accents)}% to {max(accents)}%   (spread {spread:.1f} points)")
+    if spread > 12:
+        penalties.append(("accent discipline", 0, 2))
+
+    uniq = []
+    for key, label in [("fonts", "font family"), ("radii", "radius")]:
+        for s in surfaces:
+            others = set.union(*[o[key] for o in surfaces if o is not s])
+            only = s[key] - others
+            if only:
+                uniq.append(f"{s['label']} is the only surface using {label} {sorted(only)[:4]}")
+    if uniq:
+        print("\n  One-off usage (each of these is a place the system was not followed):")
+        for u in uniq[:8]:
+            print(f"    - {u}")
+
+    # Suggested letter: start at A, drop by weighted drift.
+    ladder = ["A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "F"]
+    steps = min(sum(w for _, _, w in penalties), len(ladder) - 1)
+    print("-" * 78)
+    print(f"Suggested --consistency: {ladder[steps]}"
+          + (f"   (drift in: {', '.join(p[0] for p in penalties)})" if penalties else "   (no drift measured)"))
+    if len(surfaces) < 3:
+        print("Only 2 surfaces compared — Brand Coherence wants 3+ before the letter means much.")
+    print("SUGGESTED, not decided: matching tokens are necessary for a product to look")
+    print("like itself, not sufficient. Confirm against the screenshots before grading.")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("probe_json")
+    ap.add_argument("probe_json", nargs="?")
+    ap.add_argument("--compare", nargs="+", metavar="PROBE_JSON",
+                    help="compare 2+ probe files for cross-surface consistency")
     ap.add_argument("--emit-findings", help="write a findings JSON skeleton for score.py")
     ap.add_argument("--expect-fixture", action="store_true",
                     help="assert the known fixture defects were caught")
     ap.add_argument("--quiet", action="store_true", help="table only, no guidance")
     args = ap.parse_args()
+
+    if args.compare:
+        return cross_surface(args.compare)
+    if not args.probe_json:
+        ap.error("give a probe JSON, or --compare with 2+ of them")
 
     with open(args.probe_json) as fh:
         payload = json.load(fh)

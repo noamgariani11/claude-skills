@@ -80,6 +80,23 @@ maximum. Its slop F comes from stacking the patterns, not from page size.
 **Do not quote these numbers as current facts forever.** They are dated. Any of
 these sites can redesign next week; re-measure before citing.
 
+### The consistency check is calibrated too
+
+`probe-report.py --compare` was tuned the same way, and it needed it. The first
+version scored **three pages of claude.com an F** — because it compared
+truncated top-8 token lists, treated `anthropicSans` and `Anthropic Sans` as
+different faces, and divided shared tokens by the union, which punishes a
+surface for merely using fewer values. After fixing all three (full value sets,
+normalised names, overlap-over-smallest, and voice judged on the primary face
+rather than the whole family set):
+
+- three pages of one design system → **B**, with the one genuine drift named
+  (claude.com/news renders system-ui as its primary face, not the brand sans)
+- three different companies → **F**
+
+If your consistency check cannot tell those two cases apart, it is measuring
+nothing. Re-run both after touching it.
+
 ---
 
 ## Grade anchors — what each letter means in practice

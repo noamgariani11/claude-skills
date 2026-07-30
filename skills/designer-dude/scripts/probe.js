@@ -426,14 +426,21 @@ function __ddProbe(opts) {
 
     var padKeys = Object.keys(pads).map(Number);
     var offBase = padKeys.filter(function (v) { return v % 4 !== 0 && v !== 1 && v !== 2 && v !== 3; });
+    function nums(map) {
+      return Object.keys(map).map(Number).sort(function (a, b) { return a - b; });
+    }
     return {
       spacing: {
         distinct: padKeys.length, top: topN(pads, 12),
+        // FULL sets as well as the top-N: the cross-surface consistency check
+        // compares vocabularies, and comparing truncated top-8 lists reported
+        // drift between pages that actually share one scale.
+        values: nums(pads).slice(0, 60),
         offFourBase: offBase.sort(function (a, b) { return a - b; }).slice(0, 20),
         offFourBaseCount: offBase.length
       },
-      gaps: { distinct: distinct(gaps), top: topN(gaps, 8) },
-      radius: { distinct: distinct(radii), top: topN(radii, 10) },
+      gaps: { distinct: distinct(gaps), top: topN(gaps, 8), values: nums(gaps).slice(0, 40) },
+      radius: { distinct: distinct(radii), top: topN(radii, 10), values: nums(radii).slice(0, 40) },
       shadow: { distinct: distinct(shadows), top: topN(shadows, 5) },
       zIndex: { distinct: distinct(zs), values: Object.keys(zs).sort(function (a, b) { return a - b; }).slice(0, 20) },
       borderWidths: topN(borders, 5),
@@ -503,6 +510,99 @@ function __ddProbe(opts) {
       clickableWithoutTransition: noTransition,
       focusRing: { tested: tested, invisible: noRing.n, list: noRing.list,
                    truncated: noRing.out().truncated }
+    };
+  });
+
+  /* ---------------- designed states ---------------- */
+  //
+  // The Interaction pillar (weight 10) asks whether hover / focus-visible /
+  // active / disabled are DESIGNED. CSS pseudo-states cannot be synthesized
+  // from JS, so instead of faking a pointer this walks the stylesheets and asks
+  // "is there a rule carrying :hover that matches THIS element". That answers
+  // the rubric's question per element rather than by grepping the repo for the
+  // word "hover" and finding 1463 hits that prove nothing.
+  safe("states", function () {
+    var PSEUDO = ["hover", "focus-visible", "focus", "active", "disabled"];
+    var rulesFor = {};
+    PSEUDO.forEach(function (p) { rulesFor[p] = []; });
+    var inaccessibleSheets = 0, reducedMotionRules = 0, sheetsRead = 0;
+
+    function walk(rules) {
+      for (var i = 0; i < rules.length; i++) {
+        var r = rules[i];
+        if (r.type === 4 || r.media) {                  // @media
+          var txt = (r.conditionText || (r.media && r.media.mediaText) || "");
+          if (/prefers-reduced-motion/.test(txt)) reducedMotionRules++;
+          if (r.cssRules) walk(r.cssRules);
+          continue;
+        }
+        if (r.cssRules && !r.selectorText) { walk(r.cssRules); continue; }  // @supports, @layer
+        if (!r.selectorText) continue;
+        var sel = r.selectorText;
+        PSEUDO.forEach(function (p) {
+          if (sel.indexOf(":" + p) === -1) return;
+          // Strip the pseudo so the remainder can be matched against elements.
+          sel.split(",").forEach(function (part) {
+            if (part.indexOf(":" + p) === -1) return;
+            var base = part.replace(new RegExp(":" + p + "(\\([^)]*\\))?", "g"), "").trim();
+            if (base && rulesFor[p].length < 400) rulesFor[p].push(base);
+          });
+        });
+      }
+    }
+
+    for (var s = 0; s < document.styleSheets.length; s++) {
+      try {
+        var cr = document.styleSheets[s].cssRules;
+        if (!cr) { inaccessibleSheets++; continue; }
+        sheetsRead++;
+        walk(cr);
+      } catch (e) {
+        inaccessibleSheets++;      // cross-origin sheet: cannot be read, not a defect
+      }
+    }
+
+    var CLICKABLE = 'a[href],button,[role="button"],[role="tab"],[role="menuitem"],summary,input[type="submit"]';
+    var els = Array.prototype.slice.call(document.querySelectorAll(CLICKABLE), 0, 300)
+      .filter(function (el) { return visible(el); });
+    var counts = {};
+    PSEUDO.forEach(function (p) { counts[p] = 0; });
+    var missingHover = mk(EX);
+
+    els.forEach(function (el) {
+      PSEUDO.forEach(function (p) {
+        var matched = rulesFor[p].some(function (base) {
+          try { return el.matches(base); } catch (e) { return false; }
+        });
+        if (matched) counts[p]++;
+        else if (p === "hover") {
+          missingHover.push({ sel: selectorFor(el), text: (el.innerText || "").trim().slice(0, 28) });
+        }
+      });
+    });
+
+    var formControls = Array.prototype.slice.call(
+      document.querySelectorAll("input,select,textarea,button"), 0, 300);
+    var disabledPresent = document.querySelectorAll("[disabled],[aria-disabled=true]").length;
+
+    return {
+      stylesheetsRead: sheetsRead,
+      // A page whose CSS is all cross-origin cannot be measured this way; say
+      // so rather than reporting zero coverage as a design failure.
+      inaccessibleStylesheets: inaccessibleSheets,
+      interactiveElements: els.length,
+      withHoverRule: counts.hover,
+      withFocusVisibleRule: counts["focus-visible"],
+      withFocusRule: counts.focus,
+      withActiveRule: counts.active,
+      withDisabledRule: counts.disabled,
+      hoverCoverage: els.length ? Math.round((counts.hover / els.length) * 100) : null,
+      focusVisibleCoverage: els.length ? Math.round((counts["focus-visible"] / els.length) * 100) : null,
+      missingHoverExamples: missingHover.list,
+      missingHoverCount: missingHover.n,
+      reducedMotionMediaRules: reducedMotionRules,
+      formControls: formControls.length,
+      disabledControlsPresent: disabledPresent
     };
   });
 

@@ -135,7 +135,7 @@ if [ ${#EXTS[@]} -gt 0 ]; then
     | grep -v "<button\|<a \|cursor-pointer\|cursor: *pointer" \
     | grep "<div\|<span\|<li\|<td\|<tr\|<img\|<svg\|<p " | head -"$MAX_LINES"
   echo
-  echo "The browser probe (probe.js, check \`interaction.missingPointer\`)"
+  echo "The browser probe (probe.js, check \`interaction.missingPointerCursor\`)"
   echo "answers this properly -- it reads the COMPUTED cursor. Prefer it."
 fi
 
@@ -220,7 +220,7 @@ if [ -n "$removed" ]; then
     echo
     echo "Confirm by tabbing in the browser before writing this up — the"
     echo "replacement may live in a shared class or a parent rule. The probe"
-    echo "(\`a11y.focusInvisible\`) tests this against computed styles."
+    echo "(\`interaction.focusRing.invisible\`) tests this against computed styles."
     echo "A genuinely invisible focus ring is a WCAG 2.4.7 AA failure:"
     echo "CRITICAL, and it triggers the score cap (--wcag-fail)."
     HARD_FAIL_CANDIDATES=$((HARD_FAIL_CANDIDATES + 1))
