@@ -461,7 +461,11 @@ SLOP_RULES = [
     # (key, predicate, weight in letters, label)
     ("purpleOrIndigoGradients", lambda v: v >= 1, 1.0, "blue/indigo->purple gradient"),
     ("largeRadialGradients", lambda v: v >= 1, 1.0, "gradient-mesh/orb hero"),
-    ("threeUpFeatureGrids", lambda v: v >= 1, 1.0, "symmetrical three-up feature grid"),
+    # Half a letter, not a full one: a three-up feature section is a
+    # CONVENTION -- stripe.com and claude.com both ship one, and grading them
+    # down a whole letter for it says the rubric is wrong, not the sites. The
+    # slop version is the COMBINATION, handled as a combo rule below.
+    ("threeUpFeatureGrids", lambda v: v >= 1, 0.5, "symmetrical three-up feature grid"),
     ("backdropBlurElements", lambda v: v >= 6, 1.0, "glassmorphism on everything"),
     ("centredShare", lambda v: v >= 60, 1.0, "centred-everything layout"),
     ("iconsInColouredCircles", lambda v: v >= 3, 0.5, "icons in coloured circles"),
@@ -493,6 +497,17 @@ def slop_grade(primary):
         hits.append((f"emoji as design elements ({em})", 0.5, em)); drop += 0.5
     if sl.get("aiBadgeCopy"):
         hits.append(("'powered by <model>' badge", 0.25, len(sl["aiBadgeCopy"]))); drop += 0.25
+
+    # The template tell is the STACK, not any one element: a three-up grid, with
+    # icons in coloured circles, over category filler copy, is the landing page
+    # that wrote itself. Any one of those alone is a choice; all of them
+    # together is an absence of choices.
+    three = sl.get("threeUpFeatureGrids") or 0
+    circles = sl.get("iconsInColouredCircles") or 0
+    if three >= 1 and (circles >= 3 or gen >= 2):
+        hits.append(("...and it is the full template stack (3-up + icon circles/filler copy)",
+                     0.5, f"grids={three} circles={circles} filler={gen}"))
+        drop += 0.5
     # Each full letter is 3 quarter-steps on the ladder above.
     steps = int(round(drop * 3))
     grade = SLOP_LADDER[min(steps, len(SLOP_LADDER) - 1)]

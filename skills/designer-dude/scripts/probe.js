@@ -179,6 +179,25 @@ function __ddProbe(opts) {
     return { color: base, imageBehind: imageBehind };
   }
 
+  // Counted bucket: counts EVERYTHING, keeps only the first `cap` examples.
+  //
+  // The naive `if (list.length < CAP) list.push(x)` then reporting
+  // `list.length` as the count makes every count saturate at the cap: three
+  // very different sites all reported "10 controls missing an accessible
+  // name" because 10 was the cap, not the answer. Severity thresholds read
+  // those counts, so saturation quietly caps how bad a page is allowed to
+  // look. Count first, truncate the evidence only.
+  function mk(cap) {
+    return {
+      n: 0, list: [], cap: cap,
+      push: function (x) { this.n++; if (this.list.length < this.cap) this.list.push(x); },
+      out: function () {
+        return { count: this.n, list: this.list,
+                 truncated: this.n > this.list.length ? this.n - this.list.length : 0 };
+      }
+    };
+  }
+
   function tally(map, key) { map[key] = (map[key] || 0) + 1; }
   function topN(map, n) {
     return Object.keys(map).map(function (k) { return { value: k, count: map[k] }; })
@@ -209,7 +228,8 @@ function __ddProbe(opts) {
   /* ---------------- typography ---------------- */
   safe("typography", function () {
     var fams = {}, sizes = {}, weights = {}, leadingBySize = {}, aligns = {};
-    var measures = [], tightLeading = [], looseMeasure = [], displayNoTracking = [];
+    var measures = [];
+    var tightLeading = mk(EX), looseMeasure = mk(EX), displayNoTracking = mk(EX);
     var _cv = document.createElement("canvas").getContext("2d");
 
     ALL.forEach(function (el) {
@@ -230,7 +250,7 @@ function __ddProbe(opts) {
         leadingBySize[fs] = leadingBySize[fs] || [];
         if (leadingBySize[fs].length < 40) leadingBySize[fs].push(r);
         if (t.length > 120 && (r < 1.35 || r > 1.75)) {
-          if (tightLeading.length < EX) tightLeading.push({ sel: selectorFor(el), size: fs, leading: r, chars: t.length });
+          tightLeading.push({ sel: selectorFor(el), size: fs, leading: r, chars: t.length });
         }
       }
 
@@ -245,7 +265,7 @@ function __ddProbe(opts) {
             var ch = Math.round((w - pl - pr) / chw);
             if (ch > 0 && ch < 400) {
               measures.push(ch);
-              if ((ch < 45 || ch > 78) && looseMeasure.length < EX) {
+              if (ch < 45 || ch > 78) {
                 looseMeasure.push({ sel: selectorFor(el), measureCh: ch, chars: t.length });
               }
             }
@@ -253,7 +273,7 @@ function __ddProbe(opts) {
         } catch (e) { /* font string the canvas cannot parse */ }
       }
 
-      if (fs >= 32 && (px(cs.letterSpacing) === 0 || cs.letterSpacing === "normal") && displayNoTracking.length < EX) {
+      if (fs >= 32 && (px(cs.letterSpacing) === 0 || cs.letterSpacing === "normal")) {
         displayNoTracking.push({ sel: selectorFor(el), size: fs, text: t.slice(0, 40) });
       }
     });
@@ -280,7 +300,11 @@ function __ddProbe(opts) {
         median: measures.sort(function (a, b) { return a - b; })[Math.floor(measures.length / 2)],
         samples: measures.length
       } : null,
-      offenders: { leadingOutOfBand: tightLeading, measureOutOfBand: looseMeasure, displayWithoutTracking: displayNoTracking },
+      offenders: {
+        leadingOutOfBand: tightLeading.list, leadingOutOfBandCount: tightLeading.n,
+        measureOutOfBand: looseMeasure.list, measureOutOfBandCount: looseMeasure.n,
+        displayWithoutTracking: displayNoTracking.list, displayWithoutTrackingCount: displayNoTracking.n
+      },
       textAlign: topN(aligns),
       // Straight quotes and apostrophes in rendered copy (Bringhurst).
       straightQuotes: (function () {
@@ -296,7 +320,8 @@ function __ddProbe(opts) {
 
   /* ---------------- colour + contrast ---------------- */
   safe("color", function () {
-    var fails = [], nearFails = [], textColors = {}, bgColors = {}, chromaArea = {}, gradients = {};
+    var fails = mk(20), nearFails = mk(8);
+    var textColors = {}, bgColors = {}, chromaArea = {}, gradients = {};
     var pureBlackWhite = 0, checked = 0, unknownBackdrop = 0;
     var accentArea = 0, totalArea = Math.max(1, VW * VH);
 
@@ -342,13 +367,13 @@ function __ddProbe(opts) {
         fontSize: fs, weight: cs.fontWeight, fg: cs.color, bg: cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? cs.backgroundColor : "inherited",
         apcaLc: apcaLc(composed, bd.color)
       };
-      if (r < need) { if (fails.length < 40) fails.push(rec); }
-      else if (r < need + 0.6) { if (nearFails.length < 10) nearFails.push(rec); }
+      if (r < need) fails.push(rec);
+      else if (r < need + 0.6) nearFails.push(rec);
     });
 
     // Non-text contrast (WCAG 1.4.11) on form borders — the single most
     // commonly missed 3:1 requirement in real products.
-    var borderFails = [];
+    var borderFails = mk(8);
     Array.prototype.slice.call(document.querySelectorAll("input,select,textarea"), 0, 200).forEach(function (el) {
       var cs = getComputedStyle(el);
       if (!visible(el, cs)) return;
@@ -357,17 +382,17 @@ function __ddProbe(opts) {
       var bc = rgba(cs.borderTopColor), bd = backdrop(el.parentElement || el);
       if (!bc || !bd.color || bd.imageBehind) return;
       var r = ratio(over(bc, bd.color), bd.color);
-      if (r < 3 && borderFails.length < 10) {
-        borderFails.push({ sel: selectorFor(el), ratio: r, required: 3, borderColor: cs.borderTopColor });
-      }
+      if (r < 3) borderFails.push({ sel: selectorFor(el), ratio: r, required: 3, borderColor: cs.borderTopColor });
     });
 
     return {
       textContrast: {
-        checked: checked, failures: fails.length, failureList: fails,
-        borderline: nearFails, skippedImageBackdrop: unknownBackdrop
+        checked: checked, failures: fails.n, failureList: fails.list,
+        failureListTruncated: fails.out().truncated,
+        borderline: nearFails.list, borderlineCount: nearFails.n,
+        skippedImageBackdrop: unknownBackdrop
       },
-      nonTextContrast: { fieldBorderFailures: borderFails.length, list: borderFails },
+      nonTextContrast: { fieldBorderFailures: borderFails.n, list: borderFails.list },
       distinctTextColors: distinct(textColors), textColors: topN(textColors),
       distinctBackgrounds: distinct(bgColors), backgrounds: topN(bgColors),
       pureBlackOrWhiteText: pureBlackWhite,
@@ -420,12 +445,12 @@ function __ddProbe(opts) {
   safe("interaction", function () {
     var CLICKABLE = 'a[href],button,[role="button"],[role="link"],[role="tab"],[role="menuitem"],summary,input[type="submit"],input[type="button"],[onclick]';
     var els = Array.prototype.slice.call(document.querySelectorAll(CLICKABLE), 0, 600);
-    var missingPointer = [], tooSmall = [], tinyTargets = [], noTransition = 0;
+    var missingPointer = mk(EX * 2), tooSmall = mk(EX), tinyTargets = mk(EX * 2), noTransition = 0;
     els.forEach(function (el) {
       var cs = getComputedStyle(el);
       if (!visible(el, cs)) return;
       var disabled = el.disabled || el.getAttribute("aria-disabled") === "true";
-      if (!disabled && cs.cursor !== "pointer" && missingPointer.length < EX * 2) {
+      if (!disabled && cs.cursor !== "pointer") {
         missingPointer.push({ sel: selectorFor(el), cursor: cs.cursor, text: (el.innerText || "").trim().slice(0, 32) });
       }
       var r = el.getBoundingClientRect();
@@ -435,9 +460,9 @@ function __ddProbe(opts) {
         el.parentElement && textOf(el.parentElement).length > 0;
       var w = Math.round(r.width), h = Math.round(r.height);
       if (!inlineException && w > 0 && h > 0) {
-        if ((w < 24 || h < 24) && tinyTargets.length < EX * 2) {
+        if (w < 24 || h < 24) {
           tinyTargets.push({ sel: selectorFor(el), w: w, h: h, text: (el.innerText || "").trim().slice(0, 24) });
-        } else if ((w < 44 || h < 44) && tooSmall.length < EX) {
+        } else if (w < 44 || h < 44) {
           tooSmall.push({ sel: selectorFor(el), w: w, h: h });
         }
       }
@@ -450,7 +475,7 @@ function __ddProbe(opts) {
     var FOCUSABLE = 'a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
     var fels = Array.prototype.slice.call(document.querySelectorAll(FOCUSABLE), 0, 60);
     var active = document.activeElement;
-    var noRing = [], tested = 0;
+    var noRing = mk(EX * 2), tested = 0;
     fels.forEach(function (el) {
       try {
         var cs0 = getComputedStyle(el);
@@ -463,7 +488,7 @@ function __ddProbe(opts) {
         tested++;
         var ow = parseFloat(cs1.outlineWidth) || 0;
         var hasOutline = ow > 0 && cs1.outlineStyle !== "none";
-        if (before === after && !hasOutline && noRing.length < EX * 2) {
+        if (before === after && !hasOutline) {
           noRing.push({ sel: selectorFor(el), text: (el.innerText || el.value || "").toString().trim().slice(0, 28) });
         }
       } catch (e) { /* element refused focus */ }
@@ -472,11 +497,12 @@ function __ddProbe(opts) {
 
     return {
       clickable: els.length,
-      missingPointerCursor: { count: missingPointer.length, list: missingPointer },
-      belowWcagTarget24: { count: tinyTargets.length, list: tinyTargets },
-      belowFittsTarget44: { count: tooSmall.length, list: tooSmall },
+      missingPointerCursor: missingPointer.out(),
+      belowWcagTarget24: tinyTargets.out(),
+      belowFittsTarget44: tooSmall.out(),
       clickableWithoutTransition: noTransition,
-      focusRing: { tested: tested, invisible: noRing.length, list: noRing }
+      focusRing: { tested: tested, invisible: noRing.n, list: noRing.list,
+                   truncated: noRing.out().truncated }
     };
   });
 
@@ -494,27 +520,47 @@ function __ddProbe(opts) {
       }
       if (!n && el.closest && el.closest("label")) n = el.closest("label").innerText;
       if (!n) n = (el.innerText || "").trim();
+      // innerText is "" for anything not currently rendered, so a perfectly
+      // labelled item inside a closed dropdown reads as nameless. textContent
+      // sees it. Without this, a well-built site reports dozens of phantom
+      // 4.1.2 failures -- and 4.1.2 is a CRITICAL that caps the whole score.
+      if (!n) n = (el.textContent || "").trim();
       if (!n) n = el.getAttribute("title") || "";
       if (!n && el.tagName === "IMG") n = el.getAttribute("alt") || "";
+      // An icon-only control is named by its SVG's title/aria-label, or by an
+      // inner image's alt. Assistive tech honours those; so must this.
+      if (!n) {
+        var svg = el.querySelector && el.querySelector("svg");
+        if (svg) {
+          n = svg.getAttribute("aria-label") || "";
+          var ttl = svg.querySelector && svg.querySelector("title");
+          if (!n && ttl) n = (ttl.textContent || "").trim();
+        }
+      }
+      if (!n) {
+        var innerImg = el.querySelector && el.querySelector("img[alt]");
+        if (innerImg) n = innerImg.getAttribute("alt") || "";
+      }
       return (n || "").replace(/\s+/g, " ").trim();
     }
 
-    var imgsNoAlt = [], fieldsNoLabel = [], btnsNoName = [], placeholderOnly = [];
+    var imgsNoAlt = mk(EX * 2), fieldsNoLabel = mk(EX * 2), btnsNoName = mk(EX * 2),
+        placeholderOnly = mk(EX);
     Array.prototype.slice.call(document.images, 0, 300).forEach(function (el) {
-      if (!el.hasAttribute("alt") && imgsNoAlt.length < EX * 2) {
+      if (!el.hasAttribute("alt")) {
         imgsNoAlt.push({ sel: selectorFor(el), src: (el.currentSrc || el.src || "").slice(-60) });
       }
     });
     Array.prototype.slice.call(document.querySelectorAll("input,select,textarea"), 0, 300).forEach(function (el) {
       if (el.type === "hidden") return;
       var n = accName(el);
-      if (!n && fieldsNoLabel.length < EX * 2) fieldsNoLabel.push({ sel: selectorFor(el), type: el.type || el.tagName });
-      else if (!n && el.placeholder) placeholderOnly.push({ sel: selectorFor(el), placeholder: el.placeholder });
+      if (!n) {
+        fieldsNoLabel.push({ sel: selectorFor(el), type: el.type || el.tagName });
+        if (el.placeholder) placeholderOnly.push({ sel: selectorFor(el), placeholder: el.placeholder });
+      }
     });
     Array.prototype.slice.call(document.querySelectorAll('button,[role="button"],a[href]'), 0, 400).forEach(function (el) {
-      if (!accName(el) && btnsNoName.length < EX * 2) {
-        btnsNoName.push({ sel: selectorFor(el), html: el.innerHTML.slice(0, 40) });
-      }
+      if (!accName(el)) btnsNoName.push({ sel: selectorFor(el), html: el.innerHTML.slice(0, 40) });
     });
 
     var hs = Array.prototype.slice.call(document.querySelectorAll("h1,h2,h3,h4,h5,h6"));
@@ -535,10 +581,10 @@ function __ddProbe(opts) {
     });
 
     return {
-      imagesMissingAlt: { count: imgsNoAlt.length, list: imgsNoAlt },
-      fieldsMissingLabel: { count: fieldsNoLabel.length, list: fieldsNoLabel },
-      fieldsPlaceholderOnly: { count: placeholderOnly.length, list: placeholderOnly.slice(0, EX) },
-      controlsMissingAccessibleName: { count: btnsNoName.length, list: btnsNoName },
+      imagesMissingAlt: imgsNoAlt.out(),
+      fieldsMissingLabel: fieldsNoLabel.out(),
+      fieldsPlaceholderOnly: placeholderOnly.out(),
+      controlsMissingAccessibleName: btnsNoName.out(),
       headings: { h1: document.querySelectorAll("h1").length, total: hs.length, skippedLevels: skips },
       landmarks: {
         main: document.querySelectorAll('main,[role="main"]').length,
@@ -559,11 +605,11 @@ function __ddProbe(opts) {
   /* ---------------- layout + responsiveness ---------------- */
   safe("layout", function () {
     var de = document.documentElement;
-    var overflowers = [];
+    var overflowers = mk(EX);
     if (de.scrollWidth > de.clientWidth + 1) {
       ALL.forEach(function (el) {
         var r = el.getBoundingClientRect();
-        if (r.width > 0 && r.right > de.clientWidth + 1 && overflowers.length < EX) {
+        if (r.width > 0 && r.right > de.clientWidth + 1) {
           overflowers.push({ sel: selectorFor(el), right: Math.round(r.right), viewport: de.clientWidth, width: Math.round(r.width) });
         }
       });
@@ -579,7 +625,7 @@ function __ddProbe(opts) {
     return {
       horizontalOverflow: de.scrollWidth > de.clientWidth + 1,
       scrollWidth: de.scrollWidth, clientWidth: de.clientWidth,
-      overflowingElements: overflowers,
+      overflowingElements: overflowers.list, overflowingElementCount: overflowers.n,
       documentHeight: de.scrollHeight,
       stickyOrFixed: sticky,
       // 2.4.11: a sticky header taller than the gap above a focused row can
@@ -648,25 +694,25 @@ function __ddProbe(opts) {
 
   /* ---------------- motion ---------------- */
   safe("motion", function () {
-    var anims = 0, longRunning = [], infinite = [], allProp = 0;
+    var anims = 0, longRunning = mk(EX), infinite = mk(EX), allProp = 0;
     ALL.forEach(function (el) {
       var cs = getComputedStyle(el);
       if (cs.animationName && cs.animationName !== "none") {
         anims++;
-        if (cs.animationIterationCount === "infinite" && infinite.length < EX) {
+        if (cs.animationIterationCount === "infinite") {
           infinite.push({ sel: selectorFor(el), name: cs.animationName, duration: cs.animationDuration });
         }
       }
       var d = parseFloat(cs.transitionDuration) || 0;
-      if (d > 0.6 && longRunning.length < EX) {
+      if (d > 0.6) {
         longRunning.push({ sel: selectorFor(el), duration: cs.transitionDuration, property: cs.transitionProperty });
       }
       if (cs.transitionProperty === "all") allProp++;
     });
     return {
       animatedElements: anims,
-      infiniteAnimations: { count: infinite.length, list: infinite },
-      transitionsOver600ms: longRunning,
+      infiniteAnimations: infinite.out(),
+      transitionsOver600ms: longRunning.list, transitionsOver600msCount: longRunning.n,
       transitionPropertyAll: allProp,
       reducedMotionActive: !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)
     };
@@ -677,20 +723,44 @@ function __ddProbe(opts) {
     var tells = {};
     function note(k, v) { tells[k] = v; }
 
-    // 1-2. purple/indigo gradients, and gradient count generally.
+    // 1-2. purple/indigo gradients, and gradient-mesh heroes.
+    //
+    // These fire only on gradients that are actually VISIBLE AND CHROMATIC.
+    // Without the alpha/saturation/area gates, a design-led site's 4%-opacity
+    // decorative radial wash counted as a "gradient-mesh orb hero" and a
+    // near-black dark-theme scrim counted as a purple gradient -- so the tool
+    // graded Linear's slop an F, which is not a finding, it is a bug. A slop
+    // detector that cannot tell a brand killer from a 0.04-alpha glow will be
+    // ignored exactly when it is right.
     var grads = [], purpleGrad = 0, meshy = 0;
     ALL.forEach(function (el) {
       var cs = getComputedStyle(el);
       if (!cs.backgroundImage || !/gradient/.test(cs.backgroundImage)) return;
+      if (!visible(el, cs)) return;
+      var r = el.getBoundingClientRect();
+      var area = Math.max(0, Math.min(r.right, VW) - Math.max(r.left, 0)) *
+                 Math.max(0, Math.min(r.bottom, VH) - Math.max(r.top, 0));
+      if (area < VW * VH * 0.04) return;          // too small to set a tone
       var bi = cs.backgroundImage;
-      var stops = bi.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}|oklch\([^)]+\)/gi) || [];
-      var hues = stops.map(function (s) { var c = rgba(s); return c ? hsl(c) : null; }).filter(Boolean)
-        .filter(function (h) { return h.s > 0.15; }).map(function (h) { return h.h; });
+      var stops = bi.match(/rgba?\([^)]+\)|#[0-9a-f]{3,8}|oklch\([^)]+\)|oklab\([^)]+\)|color\([^)]+\)|hsla?\([^)]+\)/gi) || [];
+      var chromatic = stops.map(function (s) {
+        var c = rgba(s);
+        if (!c || c.a < 0.25) return null;        // a near-transparent stop sets no tone
+        var h = hsl(c);
+        if (h.s < 0.25 || h.l < 0.12 || h.l > 0.94) return null;  // grey, near-black, near-white
+        return h;
+      }).filter(Boolean);
+      var hues = chromatic.map(function (h) { return h.h; });
       var hasPurple = hues.some(function (h) { return h >= 255 && h <= 305; });
       var hasBlue = hues.some(function (h) { return h >= 205 && h <= 254; });
       if (hasPurple && (hasBlue || hues.length > 1)) purpleGrad++;
-      if (/radial-gradient/.test(bi) && el.getBoundingClientRect().width > VW * 0.5) meshy++;
-      if (grads.length < 4) grads.push({ sel: selectorFor(el), hues: hues.slice(0, 4), image: bi.slice(0, 100) });
+      // A mesh/orb hero is chromatic and big. A monochrome vignette is not.
+      if (/radial-gradient/.test(bi) && chromatic.length >= 1 && area > VW * VH * 0.15) meshy++;
+      if (grads.length < 4) {
+        grads.push({ sel: selectorFor(el), hues: hues.slice(0, 4),
+                     areaShare: Math.round((area / (VW * VH)) * 100),
+                     image: bi.slice(0, 100) });
+      }
     });
     note("purpleOrIndigoGradients", purpleGrad);
     note("largeRadialGradients", meshy);
@@ -737,22 +807,28 @@ function __ddProbe(opts) {
 
     // 12. emoji as design elements in headings/buttons
     var EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/u;
-    var emojiUi = [];
+    var emojiUi = mk(EX);
     Array.prototype.slice.call(document.querySelectorAll("h1,h2,h3,button,a[href]"), 0, 400).forEach(function (el) {
       var t = (el.innerText || "").trim();
-      if (t && EMOJI.test(t) && emojiUi.length < EX) emojiUi.push({ sel: selectorFor(el), text: t.slice(0, 40) });
+      if (t && EMOJI.test(t)) emojiUi.push({ sel: selectorFor(el), text: t.slice(0, 40) });
     });
-    note("emojiInHeadingsOrButtons", { count: emojiUi.length, list: emojiUi });
+    note("emojiInHeadingsOrButtons", emojiUi.out());
 
     // 13. coloured left-border cards
     var leftBorderCards = 0;
     ALL.forEach(function (el) {
       var cs = getComputedStyle(el);
+      if (!visible(el, cs)) return;
       var l = px(cs.borderLeftWidth) || 0;
       if (l < 2) return;
       if ((px(cs.borderTopWidth) || 0) > 0.5) return;
       var c = rgba(cs.borderLeftColor);
-      if (c && hsl(c).s > 0.2) leftBorderCards++;
+      if (!c || c.a < 0.4) return;
+      var h = hsl(c);
+      // Near-black and near-white compute a high HSL saturation while reading
+      // as neutral, which made every dark-theme hairline a "coloured accent
+      // border". Require a mid lightness before calling a border coloured.
+      if (h.s > 0.25 && h.l > 0.2 && h.l < 0.85) leftBorderCards++;
     });
     note("colouredLeftBorderCards", leftBorderCards);
 
@@ -773,7 +849,19 @@ function __ddProbe(opts) {
     ];
     var genericHits = GENERIC.map(function (re) { var m = body.match(re); return m ? m[0] : null; }).filter(Boolean);
     note("genericMarketingCopy", genericHits);
-    note("aiBadgeCopy", (body.match(/powered by (gpt|claude|openai)|built with (claude|gpt)/gi) || []).slice(0, 4));
+    // "Powered by <model>" is a slop tell when it advertises someone else's
+    // model as your product's substance. On the model provider's OWN site it is
+    // a product name, not a dependency badge -- so skip the tell when the model
+    // is the brand. (Caught on claude.com, where the rule fired on the word
+    // "Claude". A tool that cannot tell whose brand it is looks stupid at
+    // exactly the moment it needs to be trusted.)
+    var brandContext = (location.hostname + " " + (document.title || "")).toLowerCase();
+    var badges = (body.match(/powered by (gpt|claude|openai|gemini|llama)|built with (claude|gpt|openai)/gi) || [])
+      .filter(function (m) {
+        var model = m.toLowerCase().replace(/^(powered by|built with)\s+/, "");
+        return brandContext.indexOf(model) === -1;
+      });
+    note("aiBadgeCopy", badges.slice(0, 4));
 
     // 7. centred-everything
     var blocks = 0, centred = 0;

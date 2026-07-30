@@ -117,6 +117,52 @@ try {
   // another session is holding the shared browser.
   browser = await pw.chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+
+  // --runner exercises probe-runner.mjs the way the MCP tool does: evaluate the
+  // file to a function and hand it a page. Worth having as a real test, because
+  // the runner is the one component whose contract with the harness cannot be
+  // verified from here -- and an unexercised runner is where a whole review
+  // silently fails to collect any evidence.
+  if (argv.includes("--runner")) {
+    const { readFileSync: rf, writeFileSync: wf, mkdirSync: mk, existsSync: ex, rmSync: rms } =
+      await import("node:fs");
+    const { homedir } = await import("node:os");
+    const cfgDir = join(homedir(), ".cache", "designer-dude");
+    const cfgPath = join(cfgDir, "probe-config.json");
+    mk(cfgDir, { recursive: true });
+    const had = ex(cfgPath) ? rf(cfgPath, "utf8") : null;   // never clobber a real config
+    const outDir = join(profile, "design");
+    try {
+      wf(cfgPath, JSON.stringify({
+        outDir, label: "fixture", url: fixture,
+        viewports: [[1440, 900], [390, 844]],
+        dark: true, reducedMotion: true, waitMs: 200, fullPage: false,
+        skillDir: here,
+      }));
+      const src = rf(join(here, "probe-runner.mjs"), "utf8");
+      // Same shape the harness uses: the file is a bare async (page) => {...}
+      const fn = new Function("return (" + src + ")")();
+      if (typeof fn !== "function") throw new Error("probe-runner.mjs did not evaluate to a function");
+      const outText = await fn(page);
+      console.log(outText);
+      const jsonPath = join(outDir, "probe-fixture.json");
+      const ok = ex(jsonPath) && ex(join(outDir, "screenshots", "fixture-1440x900.png"));
+      const parsed = ok ? JSON.parse(rf(jsonPath, "utf8")) : null;
+      const runCount = parsed ? parsed.runs.length : 0;
+      console.log(`\nrunner check: json=${ex(jsonPath)} screenshots=${ex(join(outDir, "screenshots", "fixture-1440x900.png"))} runs=${runCount} (expect 4)`);
+      if (!ok || runCount !== 4) {
+        console.log("RUNNER CHECK FAILED");
+        process.exitCode = 1;
+      } else {
+        console.log("runner check ok");
+      }
+    } finally {
+      if (had === null) { try { rms(cfgPath); } catch { /* ignore */ } }
+      else wf(cfgPath, had);
+    }
+    await browser.close();
+    process.exit(process.exitCode || 0);
+  }
   await page.goto(fixture, { waitUntil: "load" });
   await page.waitForTimeout(300);
 

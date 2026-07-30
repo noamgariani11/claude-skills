@@ -8,12 +8,14 @@ well-placed citation beats five.
 
 ## Currency layer — re-verify before you assert
 
-**Last verified: 2026-07-19.**
+**Last verified: 2026-07-30.**
 
 Design taste and web standards both rot. Every dated claim in this skill
 carries an expiry. **If today is more than ~6 months past the date above,
 spot-check the time-sensitive claims with WebSearch before asserting them**
-— especially the trend calls, which age fastest.
+— especially the trend calls, which age fastest. `score.py` reads this date and
+warns when it is more than 200 days old, so the staleness surfaces itself
+instead of waiting to be noticed.
 
 Claims that are load-bearing and dated:
 
@@ -22,10 +24,27 @@ Claims that are load-bearing and dated:
 | WCAG 2.2 is the AA baseline | Current. W3C Recommendation, Oct 2023. |
 | WCAG 4.1.1 Parsing is obsolete | Current. Never dock for it. |
 | INP replaced FID as a Core Web Vital | Current since March 2024. |
+| CWV thresholds: LCP ≤2.5s, INP ≤200ms, CLS <0.1 at p75 | Current. Re-verified against web.dev 2026-07-30, unchanged, no pending successor metric. |
+| APCA status | **Draft, not a standard.** Under consideration for WCAG 3, not in the current WCAG 3 draft, and **not backward compatible** with WCAG 2 numbers. `probe.js` and `contrast.py` report Lc as advisory only. Never cite it as conformance; never drop WCAG 2 conformance for it. |
 | WCAG 3 status | March 2026 Working Draft. What earlier drafts called **"outcomes" are now "requirements"** — 174 of them. Candidate Recommendation anticipated Q4 2027; Recommendation likely 2028–2030. **Not legally required. Cite as forward-looking only.** |
 | Bento grids, gradient-mesh heroes, glassmorphism read as dated | Taste call, true as of mid-2026. Most likely entry on this page to expire. |
 | claude.ai palette/type values below | Verified 2026-07-19, but a product can redesign at any time. Re-check before quoting exact hexes at someone. |
 | Tailwind is on v4 (CSS-first `@theme`, no `tailwind.config.js`) | Verified 2026-07-30. Latest 4.3.3; v4.3 shipped 2026-05-08. **Version-check the project itself before writing any Tailwind fix** — v3 syntax fails silently on v4. `references/tailwind.md` §0. |
+
+| The measured anchors in `calibration.md` | Measured 2026-07-30 with this skill's own probe. Any of those products can redesign; re-measure before citing a number at someone. |
+
+### Claims that failed verification — do not repeat these
+
+Kept deliberately, because a plausible-sounding wrong fact does more damage
+than a gap, and these come up:
+
+- **"Core Web Vitals 2.0", or a new "Visual Stability Index (VSI)" replacing or
+  supplementing CLS.** Widely repeated across SEO content sites in 2026.
+  **Not corroborated by web.dev**, which documents three stable metrics and no
+  pending successor. Do not cite it; if someone else does, this is the answer.
+- **A firm WCAG 3 date.** Every confident timeline found for it disagrees with
+  the others. The working group has not committed to one. Say "years out" and
+  stop.
 
 When a trend claim has expired and you have not re-verified it, say so
 rather than asserting: *"This read as dated a year ago; I have not
@@ -64,6 +83,19 @@ over rainbow gradients, restrained motion, microcopy that reads like a
 human wrote it.
 
 **Benchmark against these — not dribbble shots or competitor SaaS.**
+
+### App-surface benchmarks (different question, different bar)
+
+The list above is mostly marketing craft. When the target is an application,
+benchmark the things an application is judged on — density, keyboard, state
+handling — against **Linear** (dense lists, command palette, instant feel),
+**the Stripe dashboard** (tables and financial data done properly: tabular
+numerals, right-aligned currency, real empty and partial-failure states),
+**Figma** (modeless direct manipulation), and **Height / Notion** (density
+that still reads as calm). See `enterprise.md`.
+
+A product can be A-grade as an app and B-grade as a marketing site, or the
+reverse. Grade the surface you are actually looking at, and say which.
 
 ---
 

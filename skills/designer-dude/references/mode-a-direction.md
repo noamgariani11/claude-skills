@@ -221,8 +221,25 @@ Otherwise the flat Stitch schema wins.
 
 ### Accessibility check before you ship a palette
 
-Every direction must clear WCAG AA on its own tokens **before** you present
-it. Check `body` on `canvas`, `muted` on `canvas`, and `on-primary` on
-`primary` at minimum. A beautiful palette that fails contrast is not a
-direction, it is a rewrite waiting to happen — and under this skill's
-rubric it caps the score at C+ the moment it ships.
+Every direction must clear WCAG AA on its own tokens **before** you present it.
+This is not an eyeball step — run the calculator:
+
+```bash
+python3 ~/.claude/skills/designer-dude/scripts/contrast.py --design-md DESIGN.md
+# or, before the file exists, check the pairings directly:
+python3 ~/.claude/skills/designer-dude/scripts/contrast.py "oklch(0.55 0.17 38)" "#faf9f5"
+```
+
+It reads oklch as happily as hex, grids every role pairing the naming makes
+explicit, checks light and dark blocks **separately** (a flattened palette
+exists in neither theme), and when something fails it prints the nearest
+passing colour **with the hue held**, so the fix does not cost you the brand.
+
+Check `body` on `canvas`, `muted` on `canvas`, and `on-primary` on `primary` at
+minimum. Note what the calculator cannot see: text over images or gradients,
+translucent surfaces, and disabled states. Those need the rendered probe.
+
+A beautiful palette that fails contrast is not a direction, it is a rewrite
+waiting to happen — and under this skill's rubric it caps the score at C+ the
+moment it ships. Presenting three directions where one of them cannot pass is
+presenting two directions.
