@@ -16,61 +16,15 @@ specific claim older than ~6 months.
 
 ---
 
-## 0 — The v3 → v4 correction table
+## 0 — v4 syntax, the grep sweep, and fixing correctly
 
-The single highest-value part of this file. Emitting v3 syntax in a fix is
-a real defect, not a style quibble — most of these silently do nothing.
+**Moved to `tailwind-v4.md`** — the v3→v4 correction table, the review grep
+checklist, and the table of plausible-but-wrong fixes. Those three are needed on
+nearly every run, so they live in a small file you can load at fix time without
+pulling this whole reference in with them.
 
-| Book says **[v3]** | Emit instead **[v4]** |
-|---|---|
-| `@tailwind base; @tailwind components; @tailwind utilities;` | `@import "tailwindcss";` |
-| `tailwind.config.js` + `theme.extend` | `@theme { --color-…: …; }` in the CSS entry file |
-| `plugins: [require('@tailwindcss/typography')]` | `@plugin "@tailwindcss/typography";` |
-| `@layer components { .btn { @apply … } }` | `@utility btn { … }` (real CSS, cascade-layered correctly) |
-| `bg-gradient-to-r` | `bg-linear-to-r` (plus `bg-radial`, `bg-conic`) |
-| `rounded` / `rounded-sm` | `rounded-sm` / `rounded-xs` (whole scale shifted down one) |
-| `shadow` / `shadow-sm` | `shadow-sm` / `shadow-xs` (same shift; also `blur`, `drop-shadow`, `backdrop-blur`) |
-| `shadow-inner` | `inset-shadow-xs` (inset shadows got a real scale) |
-| `ring` (3px, blue-500) | `ring-3` + explicit `ring-blue-500`. Bare `ring` is now **1px `currentColor`** |
-| `outline-none` | `outline-hidden` (`outline-none` now genuinely means `outline-style: none`) |
-| `border` inherits `gray-200` | Default border color is **`currentColor`** — `border` alone now draws in the text color. Always pair: `border border-rule` |
-| `!flex` | `flex!` (important moved to the end) |
-| `bg-[--brand]` | `bg-(--brand)` (CSS vars use parens, not brackets) |
-| `flex-shrink-*` / `flex-grow-*` | `shrink-*` / `grow-*` |
-| `overflow-ellipsis` | `text-ellipsis` |
-| `bg-opacity-50`, `text-opacity-50`, `border-opacity-*`, `ring-opacity-*`, `divide-opacity-*`, `placeholder-opacity-*` | slash modifiers only: `bg-black/50` |
-| `grid-cols-[max-content,auto]` | `grid-cols-[max-content_auto]` (commas → underscores) |
-| `first:*:pt-0` | `*:first:pt-0` (variant stacking now reads left-to-right) |
-| `focus:transform-none` to reset a `scale-150` | `focus:scale-none` — transforms are individual properties now; `transition-[opacity,transform]` → `transition-[opacity,scale]` |
-| `max-w-screen-md` | **gone.** Use `max-w-3xl`, a container query (`@md:`), or alias it yourself: `@theme { --width-screen-md: var(--breakpoint-md); }` |
-| `font-hairline` | never existed in v3 either — the book is wrong. Weights are `font-thin` (100) → `font-black` (900) |
-| Preflight gives `button { cursor: pointer }` | **v4 Preflight sets `cursor: default`.** See §6 — this is the #1 source of "why is nothing clickable" polish findings |
-| Preflight placeholder = `gray-400` | now `currentColor` at 50% opacity |
-
-Also gone in v4: `corePlugins`, `resolveConfig`, and Sass/Less/Stylus
-support. Browser floor is Safari 16.4 / Chrome 111 / Firefox 128 (`@property`,
-`color-mix()`).
-
-**New since the book that you should actually reach for:**
-
-- `size-*` — sets width and height together. `size-4` beats `h-4 w-4`, and it
-  is the correct sizing for a `lucide-react` icon.
-- Container queries are core, no plugin: `@container` on the parent, `@sm:`
-  / `@max-md:` on children. For a component that must work in a sidebar
-  *and* a full-width page, this is the right tool, not `md:`.
-- `text-shadow-*` and `mask-*` (4.1).
-- Logical properties everywhere (4.2): `inline-size` / `block-size`
-  utilities, `inset-s-*` / `inset-e-*` / `inset-bs-*` / `inset-be-*`.
-  `start-*` / `end-*` are deprecated (still work, warn).
-- **Scrollbar utilities are first-party (4.3):** `scrollbar-thin` /
-  `scrollbar-auto` / `scrollbar-none`, `scrollbar-thumb-*`,
-  `scrollbar-track-*` (with opacity modifiers), `scrollbar-gutter-stable`.
-  A custom-scrollbar finding no longer needs hand-rolled
-  `::-webkit-scrollbar` CSS — call for the utility.
-- `zoom-*` and `tab-*` (4.3).
-- Palette is oklch and now 26 ramps — `mauve`, `olive`, `mist`, `taupe`
-  joined in 4.2. Those four are genuinely useful escapes from the
-  slate/zinc/gray default-SaaS gray.
+**Read `tailwind-v4.md` before writing any Tailwind fix.** Everything below
+assumes you already have.
 
 ---
 
@@ -488,24 +442,7 @@ actually exists.
 
 ## 9 — Review checklist (what to actually grep for)
 
-Fast, high-yield sweep on any Tailwind v4 + Next.js codebase:
-
-| Grep | Finding |
-|---|---|
-| `@tailwind ` | v3 directives; build is on the compat path or broken |
-| `tailwind.config` | v3 config still authoritative; theme is not CSS-first |
-| `bg-gradient-to-` | v3 gradient syntax, silently dead in v4 |
-| `\bborder\b` without a `border-` color nearby | `currentColor` border |
-| `focus:outline-none` / `outline-none` | removed focus indicator (WCAG 2.4.7) or v3 spelling |
-| `h-screen` | mobile viewport bug; want `h-dvh` |
-| `max-w-screen-` | removed in v4 |
-| `!\w` prefix important | v3 important position |
-| `text-\[|p-\[|m-\[` density | missing tokens |
-| `text-(gray\|slate\|zinc)-` in components | no semantic token layer |
-| `prose` without `dark:prose-invert` | dark-mode contrast failure |
-| `cursor-pointer` repeated on buttons | missing the one Preflight base fix |
-| class names built with `${` | classes that never generate |
-| `clsx`/`cn` without `tailwind-merge` | conflicting classes resolved by Tailwind order, not author order |
+In `tailwind-v4.md` §2.
 
 ---
 
@@ -783,6 +720,10 @@ Stacking with other modifiers is fine and left-to-right in v4:
    a component or reach for a container query — not to keep typing.
 
 ---
+
+## 12b — Fixing correctly (read before the Mode D/F fix loop)
+
+In `tailwind-v4.md` §3.
 
 ## 13 — Customizing Tailwind
 
