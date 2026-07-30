@@ -16,7 +16,9 @@ description: |
   and vercel.com. Mode D ships fixes: FINDING-NNN IDs, triage, atomic commits,
   before/after screenshots, cross-run baselines, and scoring derived
   deterministically from confirmed findings. Mode F runs a campaign to a target
-  score with guards against inflating its own grade.
+  score with guards against inflating its own grade: fixing defects tops out at
+  92, A+ needs an evidence-backed credit against a named criterion, and a target
+  above the ceiling gets a costed design brief instead of another grinding round.
   Opinionated. Specific. Not afraid to call things ugly.
 
   Use when the user says "designer mode", "design this", "review the look",
@@ -97,7 +99,8 @@ skill becomes slow and unfocused.
 | `references/mode-d-review.md` | Mode D. Getting in past a login, the measure/confirm/grade pipeline, triage, fix loop, baselines, output format. |
 | `references/mode-f-campaign.md` | The ask is a target score ("get this to 90", "enterprise-grade") or a repeat run. Round structure, ledger, guards, when to stop. |
 | `references/enterprise.md` | The target is an application, not a page: tables, forms, the seven states, keyboard, IA at scale, density. |
-| `references/tailwind.md` | The target uses Tailwind. Any finding touching class syntax, the token/`@theme` layer, spacing or type scale, layout, motion, or breakpoints — and **always before writing a Tailwind fix**, so you emit v4 syntax and not v3. Ends with a grep checklist. |
+| `references/tailwind-v4.md` | **Always, before writing any Tailwind fix or syntax finding.** Small on purpose: the v3→v4 correction table (emit v4, never v3), the review grep sweep, and the plausible-but-wrong fixes table. |
+| `references/tailwind.md` | The deep Tailwind craft reference — `@apply` discipline, type and measure, colour, the box, Preflight, layout, animation, responsive, theme customization. Load when the question is about one of those rather than about syntax. |
 
 ### Scripts — the measurement rig
 
@@ -106,10 +109,10 @@ skill becomes slow and unfocused.
 | `scripts/probe.js` | Runs in the page. Measures contrast for every text node against its composited backdrop, the real type scale, measure in ch, focus rings (by actually focusing things), computed cursors, target sizes, radius/shadow/spacing/z scales, accent pixel share, app-surface facts, and the automatable slop tells. Measures only; never judges. |
 | `scripts/probe-runner.mjs` | Playwright driver. Sweeps viewports plus a dark and a reduced-motion pass, writes JSON + screenshots **to disk**. Load it by `filename` so neither the probe source nor its output costs context. |
 | `scripts/probe-report.py` | Applies the thresholds, emits severity-tagged candidates with evidence, computes the measurable slop grade, prints the evidence ledger. |
-| `scripts/score.py` | Derives pillar grades from confirmed findings, computes the composite and sub-scores, `--target` gap analysis, the caps, `--selftest`. |
+| `scripts/score.py` | Derives pillar grades from confirmed findings, computes the composite and sub-scores, `--target` gap analysis (including how many A+ **credits** a target above 92 would need), the caps, `--selftest`. |
 | `scripts/contrast.py` | WCAG ratios plus advisory APCA for hex/rgb/hsl/oklch/oklab. Whole palettes, per theme, with hue-preserving fixes. |
 | `scripts/micro-checks.sh` | Static/countable claims from source: radius sprawl, hardcoded colour, off-base spacing, type voice, image dims/alt, layer discipline, state coverage, dark mode. |
-| `scripts/probe-selftest.mjs` | 40 planted defects the probe must keep catching. **Run after ANY probe.js edit.** Also `--url <u>` to smoke-test a real page when the MCP browser is unavailable. |
+| `scripts/probe-selftest.mjs` | Two fixtures, two failure modes. Default: 40 planted defects the probe must keep catching (**recall**). `--precision`: a clean page of correct-but-suspicious constructs that must produce **zero** findings from the probe *and* from `probe-report.py`'s thresholds. **Run both after ANY edit to `probe.js` or `probe-report.py`.** Also `--url <u>` to smoke-test a real page when the MCP browser is unavailable. |
 
 ---
 
@@ -157,7 +160,7 @@ Proportional to the ask. A one-line question does not earn a codebase scan.
    writing a single class — `pnpm ls tailwindcss`, or the shape of the CSS
    entry file (`@import "tailwindcss"` = v4, `@tailwind base` = v3). A fix
    written in v3 syntax against a v4 build silently does nothing, which is
-   worse than no fix. `references/tailwind.md` §0 is the correction table.
+   worse than no fix. `references/tailwind-v4.md` §1 is the correction table.
    If the target was built in **Figma Sites**, expect
    accessibility gaps (missing landmarks, unlabeled inputs, broken keyboard
    order are frequently reported) and say so up front. Expect default
@@ -225,7 +228,7 @@ rather than from a page.
 | C — Plan | edits to the plan file + inline scorecard |
 | D — Review | everything under `.design/` (probe JSON, findings, scorecard, baseline, `audit-{label}-{date}.md`, screenshots) + atomic commits |
 | E — Shotgun | `design-explore/{date}/` variants + comparison board |
-| F — Campaign | `.design/campaign.md` ledger, appended per round |
+| F — Campaign | `.design/campaign.md` ledger, appended per round — plus the costed design brief when the ceiling is arithmetic |
 
 **Small asks get inline replies.** Do not manufacture reports.
 
@@ -245,6 +248,21 @@ rather than from a page.
   `--wcag-fail`. A product that looks immaculate and locks out keyboard
   users has not earned a B. Never present a capped score as the real one.
 - **Never round up.** An 86.9 is a B+, not an A−. The script floors for you.
+- **Know the ceiling before you promise a number.** Findings only demote, so a
+  card with every defect fixed scores exactly **92.00**. Above that, each point
+  is an **A+ credit**: a named criterion from `scoring.md`, evidence, 2+
+  surfaces, zero open findings on that pillar. Say this in round 0 of any
+  campaign whose target is above 92 — not in round 3. Never write a credit to
+  close a gap; when the product cannot honestly claim one, report the ceiling
+  and hand back the costed brief (`mode-f-campaign.md`).
+- **Do not grade performance you did not measure.** Core Web Vitals come from a
+  production build or they do not exist. Pass `--perf-unmeasured` (Interaction
+  caps at A−) and say so. `mode-d-review.md` has the recipe for when the
+  production command refuses to start.
+- **End every scorecard with the verdict in one line** — would you ship it,
+  would you show it to another designer — written before you look at the
+  composite. If the line and the number disagree, the line wins and the gap is
+  a bug in this skill.
 - **All questions via `AskUserQuestion`.** One per call.
 - **Mode A intake gate:** 3 admired references + 1 anti-reference before
   proposing any direction — with the starter-board exemption in
@@ -263,7 +281,15 @@ rather than from a page.
 - **Never emit v3 Tailwind syntax into a v4 project.** `bg-gradient-to-r`,
   `@tailwind base`, `!important` prefixes, `flex-shrink-0`, `outline-none`,
   `max-w-screen-md`, `theme.extend` — all dead in v4, all silent. Check
-  `references/tailwind.md` §0 before writing the fix, not after.
+  `references/tailwind-v4.md` §1 before writing the fix, not after. And check
+  §12b before shipping one: the obvious Tailwind fix for a missing focus ring,
+  a cramped layout, or a janky animation each introduce a new defect.
+- **On Tailwind, the framework supplies the scale you are counting.** Thirteen
+  type steps, nine radii and seven shadows ship in the box, and the default
+  type ratios are irregular by construction (1.111–1.333). Read the probe's
+  scale counts through `calibration.md` → "the framework supplies the
+  denominator" before grading Typography or Craft, or you will dock a stock
+  scale for drifting when the real finding is that nobody chose.
 - **Match the repo's commit convention** in Mode D. Read `git log` first;
   do not impose Conventional Commits on a repo that does not use them. Stage
   selectively — never `git add -A` a tree that has someone else's uncommitted
@@ -272,8 +298,10 @@ rather than from a page.
   claim. Trend calls expire; `score.py` warns when the layer is stale.
 - **If you change a threshold, re-run the calibration anchors.** A threshold
   that flatters the page in front of you while failing linear.app is not a
-  threshold, it is a preference. And re-run `probe-selftest.mjs` after any
-  `probe.js` edit — 40/40, or you broke a check.
+  threshold, it is a preference. And re-run **both** selftests after any edit to
+  `probe.js` or `probe-report.py` — 40/40 planted defects caught, and 0
+  candidates on the clean fixture. A check that fires on correct code costs the
+  user more than a check that misses: it survives triage and gets argued about.
 - **If the score is high and the product is still bad, say that instead of the
   number.** Then name what the rubric failed to capture. That gap is a bug in
   this skill, and it is worth fixing here rather than hiding behind a grade.

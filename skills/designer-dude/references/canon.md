@@ -29,7 +29,7 @@ Claims that are load-bearing and dated:
 | WCAG 3 status | March 2026 Working Draft. What earlier drafts called **"outcomes" are now "requirements"** — 174 of them. Candidate Recommendation anticipated Q4 2027; Recommendation likely 2028–2030. **Not legally required. Cite as forward-looking only.** |
 | Bento grids, gradient-mesh heroes, glassmorphism read as dated | Taste call, true as of mid-2026. Most likely entry on this page to expire. |
 | claude.ai palette/type values below | Verified 2026-07-19, but a product can redesign at any time. Re-check before quoting exact hexes at someone. |
-| Tailwind is on v4 (CSS-first `@theme`, no `tailwind.config.js`) | Verified 2026-07-30. Latest 4.3.3; v4.3 shipped 2026-05-08. **Version-check the project itself before writing any Tailwind fix** — v3 syntax fails silently on v4. `references/tailwind.md` §0. |
+| Tailwind is on v4 (CSS-first `@theme`, no `tailwind.config.js`) | Verified 2026-07-30. Latest 4.3.3; v4.3 shipped 2026-05-08. **Version-check the project itself before writing any Tailwind fix** — v3 syntax fails silently on v4. `references/tailwind-v4.md` §1. |
 
 | The measured anchors in `calibration.md` | Measured 2026-07-30 with this skill's own probe. Any of those products can redesign; re-measure before citing a number at someone. |
 
@@ -164,7 +164,7 @@ How each mode uses it:
   locality of styling, state made visible in the markup, and duplication
   solved in the component layer rather than in CSS. Written against v3 —
   useful for the *reasoning*, never quote its syntax. See
-  `references/tailwind.md`, which restates the whole book for v4.
+  `references/tailwind.md` + `references/tailwind-v4.md`, which restate the whole book for v4.
 - **Steve Krug — *Don't Make Me Think*.** Obviousness is the feature.
 - **Alan Cooper — *About Face*.** Goal-directed design. Modes are bugs.
 - **Jon Yablonski — *Laws of UX*.** Hick's (choice cost), Fitts's (target

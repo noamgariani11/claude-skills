@@ -84,6 +84,16 @@ Read the file-count line `micro-checks.sh` prints. If it looks far too small
 for the project, the stack detection missed something and every count below it
 is noise.
 
+**On a Tailwind project, read §15 before anything else in the output.** It pins
+the major version, and that decides whether other hits are defects or correct
+code — `bg-gradient-to-r` and `flex-shrink-0` are right on v3 and generate **no
+CSS at all** on v4. Its other rows roll up rather than stack: a zero
+Preflight-cursor-restore explains §1's pointer hits as *one* root cause with one
+fix, not N findings, and the token-layer count is the measurable half of
+Colour (4) and slop item 5. Interpret the scale counts through
+`calibration.md` → "On Tailwind, the framework supplies the denominator", or
+you will grade a stock scale as a drifting one. Reference: `tailwind.md`.
+
 ### 2b. Rendered layer (the one that matters)
 
 Write the config, then run the probe. Both paths are absolute:
@@ -116,6 +126,32 @@ things earlier versions of this mode graded without ever capturing.
 Lab performance is one machine on one network. Label it lab, or re-measure
 against a production build (`serve.sh --prod`) before quoting it as a Core Web
 Vitals result — the budgets are defined at p75 of real field data.
+
+#### Getting a production build up, when the obvious command refuses
+
+Perf is **half of the Interaction pillar's definition** (weight 10), and it is
+the half most often skipped, because dev-server numbers are worthless and the
+production command tends to fail for a reason that has nothing to do with
+design. Skipping it silently is not an option: grade it from a measurement, or
+pass `--perf-unmeasured` to `score.py` and let the pillar cap at A−. Do not
+print a letter over an observation.
+
+Work through this before giving up:
+
+1. **Read the project's own docs first.** `CLAUDE.md` / `README.md` /
+   `DEPLOY.md` usually document exactly why `build && start` refuses and what
+   to point it at. This is the step most often skipped, and the answer is
+   almost always already written down.
+2. **A refusing production start is usually an environment guard, not a build
+   failure** — a role check, a missing secret, a `NODE_ENV=production`
+   assertion. Point it at the gate/CI env file the project already keeps for
+   this (`.env.gates.local`, `.env.test`, `.env.ci`) rather than editing the
+   guard. Never weaken a production safety check to take a measurement.
+3. **A static export or preview deploy counts.** A Vercel/Netlify preview URL
+   is a production build on production infrastructure — probe that instead.
+4. **Failing all three, say what you could not measure**, pass
+   `--perf-unmeasured`, and put it in the ledger as a blocker with the reason.
+   An unreported gap reads as "checked and fine".
 
 ### 2c. Look at the screenshots
 
@@ -154,13 +190,21 @@ flow into commits, screenshots, the baseline, and the report.
 ```bash
 python3 $S/score.py --findings .design/findings-dashboard.json \
         --hierarchy B --ia B+ --content B --consistency B \
-        [--wcag-fail] [--baseline <prior>] [--provisional motion,responsive] \
+        [--wcag-fail] [--perf-unmeasured] [--baseline <prior>] \
+        [--provisional motion,responsive] \
         --target 90 --out-json .design/scorecard-dashboard.json
 ```
 
 Rules the script enforces, so do not fight them: eye-only pillars need an
 explicit letter; pillars without captured evidence go in `--provisional` and cap
-at B+; an unresolved WCAG AA failure caps Overall at C+.
+at B+; an unresolved WCAG AA failure caps Overall at C+; unmeasured Core Web
+Vitals cap Interaction at A−.
+
+**The ceiling to know before promising anything:** demotion-only scoring means a
+card with every defect fixed scores exactly **92.00**. Anything above that needs
+an A+ **credit** — a named criterion from `scoring.md`, evidence, 2+ surfaces,
+zero open findings on that pillar. `--target 95` prints how many credits the
+number would take and what claiming them would mean.
 
 Grade the **cross-page consistency** letter only after probing 3+ surfaces. Get
 the mechanical half measured rather than felt:
@@ -313,6 +357,15 @@ Offer to gitignore `.design/screenshots/` and keep the JSON + reports committed
 — the baseline is only useful if it survives, and the PNGs are large. Do not
 commit anything into the user's repo without saying so.
 
+**One file per surface, kept.** `probe-<label>.json` and `findings-<label>.json`
+are per surface and are never reused for a different one: change `label`
+whenever you change `url`. A run that probes four surfaces and leaves one
+`probe-dashboard.json` behind has thrown away its own evidence — and it shows up
+next round as cross-surface consistency silently degrading from *measured* to
+*felt*, because `probe-report.py --compare` needs **3+ files that still exist**.
+Before scoring, check you have one probe file per surface you claim to have
+reviewed. If you do not, you did not review them.
+
 ---
 
 ## Output format — inline first
@@ -350,7 +403,18 @@ than vibes. Five rows max; rank by points per minute and cut the rest.
 **5. Path to the target** — paste `score.py --target`'s per-pillar table, and
 say plainly if the target is unreachable from here.
 
-**6. Atomic-wins offer** — "Want me to apply #1, #2, #3 now?" Do not apply
+**6. The verdict, in one plain line** — beside the number, never instead of it:
+
+> **Would I ship it, and would I show it to another designer?** Ship it, yes.
+> Show it, not yet — it is correct everywhere and memorable nowhere.
+
+Write this before you look at the composite, so the number does not write it for
+you. If the verdict and the score disagree, **the verdict is the finding**: say
+so, and name what the rubric did not capture. That gap is a bug in this skill
+and it is worth fixing here rather than hiding behind a grade. A number nobody
+would defend in a sentence of English is a number that has stopped measuring.
+
+**7. Atomic-wins offer** — "Want me to apply #1, #2, #3 now?" Do not apply
 without consent.
 
 Close with a PR-ready one-liner:

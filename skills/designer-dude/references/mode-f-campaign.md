@@ -23,17 +23,35 @@ python3 ~/.claude/skills/designer-dude/scripts/score.py \
 
 The arithmetic that matters:
 
-| If every pillar were | Composite |
-|---|--:|
-| B+ | 85 |
-| A− | **88** |
-| A | 92 |
-| A+ | 97 |
+| If every pillar were | Composite | |
+|---|--:|---|
+| B+ | 85 | |
+| A− | **88** | |
+| A | **92** | ← **the findings ceiling**: every defect fixed, nothing left to demote |
+| A+ | 97 | only via credits, one criterion at a time |
 
 **A card of straight A−s scores 88.** So a 90 target means real A grades on the
 heavy pillars — Typography (15) and Hierarchy (15) are 30 points between them,
 Spacing is 12. Twelve minor fixes will not get there; they are worth about 3
 points in total.
+
+**And 92 is where fixing things stops working.** Findings mode only demotes, so
+once every pillar is clean the composite is 92.00 and no further review round
+can move it. Above that, each point is an **A+ credit** — a named criterion from
+`scoring.md`, with evidence, on 2+ surfaces, on a pillar with nothing open. A
+credit is a claim that the product is *excellent* on that dimension, not that it
+is *free of defects*.
+
+So there are two shapes of campaign, and saying which one you are in is the
+whole job of round 0:
+
+- **Target ≤92 — a defect campaign.** Findable, fixable, schedulable. Work the
+  `--target` table top-down.
+- **Target >92 — a design campaign.** `--target` prints how many credits the
+  number needs (e.g. 95 needs five: Typography, Hierarchy, Spacing, Colour,
+  Interaction). Those are not tickets. If the product cannot honestly claim
+  them, say so **now**, in the first message, and offer the brief instead of
+  three rounds that end in the same place.
 
 State it plainly:
 
@@ -85,10 +103,10 @@ history is the anti-drift device:
 ```markdown
 # Campaign: <product> → target 90
 
-| Round | Date | Surfaces probed | Overall | Slop | Capped | Provisional | Delta |
-|---|---|---|--:|---|---|---|--:|
-| 1 | 2026-07-30 | dashboard, property, form | 71.9 | F | WCAG 1.4.3 | motion | — |
-| 2 | 2026-08-02 | same 3 | 81.4 | B− | no | — | +9.5 |
+| Round | Date | Surfaces probed | Overall | Slop | Capped | Provisional | Credits | Delta |
+|---|---|---|--:|---|---|---|---|--:|
+| 1 | 2026-07-30 | dashboard, property, form | 71.9 | F | WCAG 1.4.3 | motion | — | — |
+| 2 | 2026-08-02 | same 3 | 81.4 | B− | no | — | — | +9.5 |
 
 ## Round 2
 - Fixed: FINDING-003 (contrast, verified: probe 0 failures), FINDING-007 ...
@@ -118,11 +136,25 @@ next grade**. A round that cannot name its blockers did not measure anything.
 4. **Fix, verify, commit atomically** per Mode D's fix loop. One commit per
    finding, matching the repo's own convention.
 5. **Re-probe, re-score with `--baseline`**, append to the ledger.
-6. **Report the delta and the next blocker**, then stop and check in. Do not
-   chain rounds silently: the user should get a decision point between each one.
+6. **Predict the next round before running it.** `--target` prints the points
+   each remaining pillar upgrade buys. Sum what the next round could plausibly
+   land and write that number in the ledger. **If the prediction is under a
+   point, do not run the round** — say what the expensive work is instead. The
+   "two consecutive rounds under a point" rule below is the backstop; this is
+   the version that does not spend a round to learn it.
+7. **Report the delta, the prediction, and the next blocker**, then stop and
+   check in. Do not chain rounds silently: the user should get a decision point
+   between each one.
 
 Per-round budget: **30 fixes maximum** (Mode D's cap), and stop at the first
 revert.
+
+### One probe file per surface, kept
+
+`probe-report.py --compare` needs **3+ probe files that still exist** to measure
+cross-surface consistency. A round that probes four surfaces into one filename
+loses that, and Brand Coherence quietly reverts from measured to felt — in the
+direction that always flatters. Check the file count before scoring.
 
 ---
 
@@ -136,9 +168,17 @@ not. In order of importance:
 2. **Identical evidence, identical grade.** If two rounds produce the same probe
    output, they produce the same score. A kinder reading of the rubric is not
    progress.
-3. **No A+ farming.** A+ is "considered and delightful, rare". If A+ grades are
-   appearing to close a gap, the scorecard has stopped measuring anything — and
-   `--target` deliberately stops recommending steps at A.
+3. **No A+ farming.** A+ is "considered and delightful, rare", and it is
+   reachable only through a credit that names a criterion, carries evidence,
+   cites 2+ surfaces and sits on a pillar with zero open findings. `--target`
+   deliberately never *recommends* a credit — it only prices one. Two further
+   rules:
+   - **Never award a credit in the same round that fixed the pillar's last
+     defect.** It belongs to the next round, after a fresh probe confirms the
+     fix held.
+   - **A credit written while a target is unmet is suspect by construction.**
+     If you would not have written it before seeing the gap, do not write it
+     after. The findings file keeps it forever; so does the ledger.
 4. **Rejections are counted and justified.** A round that rejects most of its
    own candidates is either measuring the wrong things or rationalising. Say
    which, in the ledger.
@@ -154,6 +194,41 @@ not. In order of importance:
 
 ---
 
+## When the ceiling is arithmetic — hand back a brief, not a paragraph
+
+`score.py` says it outright: *"Nothing left to move below A: findings ceiling
+reached at 92.00."* At that point the campaign is over as a **review**, and the
+correct deliverable changes shape. What is left is not a backlog — it is a
+design brief, and stopping at "those are briefs, not findings" leaves the user
+holding the hard part alone.
+
+So do the brief. Switch to **Mode A** (`mode-a-direction.md`) with one
+difference: the product already exists, so the intake is the shipped thing
+rather than a blank page. For each pillar the target still needs a credit on,
+produce **three directions, not one**, and for each:
+
+| | What it must say |
+|---|---|
+| **The move** | Concretely what changes. "Söhne for UI, Signifier for display, 1.25 ratio, 7 steps" — not "a stronger type system". |
+| **What it buys** | Which A+ criterion it would satisfy, and the points, from `--target`. |
+| **What it costs** | Files touched, migration shape, and the risk. "Redefining `text-*` across ~4,800 usages shifts the density of every table." |
+| **What it forecloses** | The thing you cannot easily undo afterwards. |
+| **Whose call it is** | Almost always the user's. Name the decision in one sentence. |
+
+Three fronts recur, because they are what separates 92 from 95 in every
+product: **a type system with a voice** (not a tuned framework default), **a
+brand point of view** (something more specific than "warm and restrained"), and
+**one interaction or motion moment someone would remember**. Price all three.
+
+Then stop and ask — `AskUserQuestion`, one question, the actual decision. Do not
+start implementing a bespoke type system because a score wanted five points.
+
+**Write the brief into the ledger** (or `DESIGN.md` if the user takes a
+direction). A campaign that ends with a costed brief and an honest 92 has
+delivered more than one that ends with a 95.
+
+---
+
 ## When to stop, and say so
 
 Stop the campaign and report honestly when:
@@ -163,7 +238,8 @@ Stop the campaign and report honestly when:
   right for your users" — these are the user's calls. Ask; do not invent a
   brand and score yourself on it.
 - **`--target` says the target is unreachable below A+.** Report the ceiling
-  from here and what structural change would raise it.
+  from here, then hand back the costed brief above. "Unreachable" is not the
+  end of the deliverable, it is a change of deliverable.
 - **Two consecutive rounds move the composite by less than a point.** The cheap
   work is done. Say what the expensive work is.
 - **The fixes are starting to fight the product.** If a "fix" makes the app
