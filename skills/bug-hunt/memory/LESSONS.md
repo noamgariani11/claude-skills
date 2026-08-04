@@ -81,6 +81,66 @@ highest-impact ones first, every run.
 - **Apply when:** Program intel returns a class with an outsized report count.
 - **Provenance:** added 2026-05-27 · supporting runs: 0 (seed) · contradicting: 0
 
+### L-014 · Never call a target "fully enumerated" on passive subdomain sources alone   [conf: high] · [recon]
+- **Do:** Always let the `dnsx` brute-force stage finish (or run it explicitly) before writing the
+  coverage/handoff, even on a target that looks like a one-host brochure site. If time-boxing, run a
+  short high-signal wordlist rather than skipping brute force entirely — `app`, `portal`, `staging`,
+  `dev`, `admin`, `api`, `beta`, `old` alone would have caught the case below. Treat a passive-only
+  host list as provisional and say so.
+- **Why / evidence:** olive-branch-counseling 2026-07-31 — passive enum (subfinder + assetfinder +
+  crt.sh) returned exactly 2 hosts (apex, www) and the target was written up on that basis. The
+  `dnsx` brute force later found a **third** host, `app.`, holding a dangling CNAME to an abandoned
+  GoHighLevel-family platform — a subdomain-takeover candidate that became the run's **top finding**.
+  It was invisible to every passive source and to certificate transparency.
+- **Apply when:** Every target, but especially small ones — that's exactly where the temptation to
+  skip brute force is strongest, and where abandoned vendor/agency subdomains accumulate unnoticed.
+- **Provenance:** added 2026-07-31 · supporting runs: 1 · contradicting: 0
+
+### L-015 · Report a takeover candidate as a candidate — never test claimability on a third party   [conf: high] · [process]
+- **Do:** For a dangling CNAME, confirm and report the *dangling condition* (CNAME target + the
+  provider's "not configured" response + response hashes). **Do not** register an account on the
+  provider to prove the hostname is claimable — that is a state change on a third-party system that
+  neither the program nor a direct client can authorize. State the split explicitly in the report:
+  what was confirmed vs. what was deliberately not tested, and why. Give the owner a zero-risk
+  remediation (delete the DNS record) that does not depend on resolving the open question.
+- **Why / evidence:** olive-branch-counseling 2026-07-31 — `app.` → `sites.ludicrous.cloud`. Proving
+  exploitability required creating a tenant account on the SaaS and binding the client's domain to
+  it. Reporting it as a *candidate* with an explicit "here is what I did not test" section kept the
+  finding honest (guardrail 8) and still actionable — the fix is a 5-minute DNS deletion regardless.
+- **Apply when:** Any dangling-CNAME / unclaimed-bucket hit, on any platform or direct engagement.
+- **Provenance:** added 2026-07-31 · supporting runs: 1 · contradicting: 0
+
+### L-012 · Fingerprint the WAF's User-Agent handling BEFORE trusting any scan result   [conf: high] · [recon/process]
+- **Do:** At the very start of recon, send the same GET with (a) the identifying research UA and
+  (b) a normal browser UA, and compare status codes. If they differ, the identifying UA is being
+  blocked and every downstream tool (httpx/nuclei/katana/ffuf) will return a **false clean**.
+  Switch `USER_AGENT` in `config.env` to a browser string, record why in a comment, and disclose
+  the substitution in the report. Where a platform *mandates* an identifying header, that mandate
+  wins — report the block to the program instead of working around it.
+- **Why / evidence:** olive-branch-counseling run 2026-07-31 — `UA='monk11 authorized-research'`
+  returned **403** on every path; a browser UA returned **200**. Had the run proceeded on the
+  default UA it would have concluded "no findings" while never seeing the site. Five real
+  findings followed only after the swap.
+- **Apply when:** Every run, before recon. Two requests; costs nothing.
+- **Provenance:** added 2026-07-31 · supporting runs: 1 · contradicting: 0
+
+### L-013 · On small-business/brochure targets, the findings are in DNS and third-party tags, not the app   [conf: med] · [class/process]
+- **Do:** When the target resolves to a single host running a maintained CMS (WordPress/Squarespace/
+  Wix) with no authenticated app surface, do **not** spend the run on IDOR/SSRF/injection — there
+  is no surface for them. Front-load: (1) email auth — DMARC/DKIM/SPF via an independent resolver;
+  (2) third-party tracking tags, especially ad/remarketing tags on sensitive-topic URLs;
+  (3) CMS-default over-disclosure (`/wp-json/wp/v2/users`); (4) security headers, with
+  `Referrer-Policy` weighted high because it compounds (2). Then verify the CMS stack is patched
+  and the sensitive plugin REST routes 401 — and report *those* as clean findings.
+- **Why / evidence:** olive-branch-counseling 2026-07-31 — a fully-patched WP install with every
+  sensitive REST route correctly 401'ing still yielded two High findings, both **outside the web
+  app**: no DMARC/DKIM (domain spoofable to the practice's clients) and Google Ads remarketing
+  firing on `/trauma-ptsd-therapy/`. The doctrine's default IDOR→SSRF→injection ordering would
+  have spent the whole run on absent surface.
+- **Apply when:** Single-host CMS target, no login/app surface. Especially for
+  healthcare/legal/financial practices, where the tracking finding carries regulatory weight.
+- **Provenance:** added 2026-07-31 · supporting runs: 1 · contradicting: 0
+
 ### L-009 · When source is available, READ it — don't stay black-box   [conf: med] · [class/process]
 - **Do:** Before deep black-box probing, check whether the in-scope asset's source is obtainable —
   the org's public GitHub/GitLab repos, published npm/PyPI/Go/Maven packages it ships, a decompilable
