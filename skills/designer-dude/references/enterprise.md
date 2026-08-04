@@ -1,4 +1,4 @@
-# Enterprise app design — what world-class looks like on a dense surface
+# Enterprise app design - what world-class looks like on a dense surface
 
 Load this whenever the target is an **application** rather than a marketing
 page: dashboards, tables, forms, detail pages, admin surfaces, anything a
@@ -10,9 +10,16 @@ transfers. What does not is the thing enterprise design is actually judged on:
 they can undo a mistake.** A landing page that looks immaculate and an
 application that looks immaculate are not the same achievement.
 
-The standard here is Linear, Stripe's dashboard, Figma, and Height — products
+The standard here is Linear, Stripe's dashboard, Figma, and Height - products
 where the craft is in the density, the keyboard, and the state handling, not in
 the hero.
+
+**Pairs with `components.md`, which is the per-control layer.** This file is
+about the surface: what belongs on it, how dense, in what order, and what
+happens when it fails. That file is about the thing you click. An app surface
+needs both, and the division is worth keeping straight - "the table is too
+airy" is a question for this file, "the row action only appears on hover" is a
+question for that one.
 
 ---
 
@@ -43,7 +50,7 @@ most often designed like a marketing component.
 - Offer a density toggle on any table users live in, and **persist the choice**.
   The right row height is the one that user picked.
 - A typical desktop viewport shows 12–15 comfortable rows. Reviewing 300 records
-  is 9 screens compact against 20 comfortable — that difference is the feature.
+  is 9 screens compact against 20 comfortable - that difference is the feature.
 
 **Numbers.**
 
@@ -58,9 +65,12 @@ most often designed like a marketing component.
 **Structure.**
 
 - Sticky header past ~15 rows. Column meaning must not scroll away.
-- `th[scope="col"]`, and `aria-sort` on any sortable header. Sortable headers
+- Explicit header associations where direction is ambiguous (`scope="col"` /
+  `scope="row"`, or `headers`/`id` for multi-level tables), and `aria-sort` on
+  any sortable header. A small one-direction table may rely on `<th>` alone.
+  Sortable headers
   that only look sortable are a 4.1.2 failure.
-- Sort must be **deterministic on ties** — add a stable secondary key, or the
+- Sort must be **deterministic on ties** - add a stable secondary key, or the
   same query returns rows in different orders and users think data changed.
 - Pin the identifying column when horizontal scrolling is unavoidable.
 - Zebra striping is a last resort; row hover and adequate row height usually beat
@@ -68,7 +78,7 @@ most often designed like a marketing component.
 
 **Selection and bulk actions.**
 
-- Selected rows need a visible tint that is **distinguishable from hover** —
+- Selected rows need a visible tint that is **distinguishable from hover** -
   two tints, not one used for both.
 - Show the count (`3 of 248 selected`) and offer select-all-matching separately
   from select-all-visible. Those are different intents and conflating them
@@ -133,6 +143,20 @@ The pillar list calls for seven states. On an app surface they are not optional:
 **Optimistic updates need a rollback that is visible.** An optimistic write that
 silently reverts teaches users not to trust the screen.
 
+**Every row of that table is graded by DRIVING the app, not by reading it.**
+The probe can tell you a skeleton exists somewhere in the DOM; it cannot tell
+you the mutation gave feedback in 100ms, that the bulk action named which three
+of forty items failed, or that the optimistic write rolled back visibly. Go
+through the `browse` skill (`browser-verification.md`): log in once - the MCP
+browser keeps the session for the whole run, including across subagents -
+then reach each state deliberately. Filter a list to nothing for the empty
+state, request a record that does not exist for the error state, submit with a
+throttled network for pending, and `browser_console_messages` plus
+`browser_network_requests` after each one, because a state that looks fine
+while logging a 500 is not fine. Mode D's `states` probe config captures the
+ones reachable by URL; the rest need clicks, and a state you did not reach is
+a state you did not grade - say so rather than scoring around it.
+
 ---
 
 ## Keyboard and speed
@@ -143,7 +167,7 @@ silently reverts teaches users not to trust the screen.
   tables and modals.
 - Modals: trap focus, restore it to the trigger on close, Escape closes.
 - A product used daily earns shortcuts: a command palette, `/` for search,
-  `j/k` navigation on lists. Discoverable via a `?` sheet — not a secret.
+  `j/k` navigation on lists. Discoverable via a `?` sheet - not a secret.
 - Sticky headers must not obscure a focused row (WCAG 2.4.11). Use
   `scroll-margin-top` equal to the header height.
 
@@ -186,7 +210,7 @@ grading them by one standard is how a rubric produces bad advice.
 
 ## What to measure, and with what
 
-The probe already captures the app-specific facts — read them out of
+The probe already captures the app-specific facts - read them out of
 `app` in the probe JSON:
 
 | Question | Where |

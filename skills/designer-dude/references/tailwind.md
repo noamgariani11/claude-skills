@@ -1,10 +1,10 @@
 # Tailwind craft reference
 
 Source: Noel Rappin, *Modern CSS with Tailwind*, 2nd ed. (Pragmatic
-Bookshelf, 2022) — chapters 2–4 so far. The book is **Tailwind v3**. The
+Bookshelf, 2022) - chapters 2–4 so far. The book is **Tailwind v3**. The
 stack this skill actually reviews is **Tailwind v4.3.x + Next.js App
 Router + React 19 + pnpm + `lucide-react`**. Every rule below is stated
-in v4 terms; where the book is stale, the v3 form is marked **[v3 — do
+in v4 terms; where the book is stale, the v3 form is marked **[v3 - do
 not emit]** so it never gets copied into a review or a fix.
 
 Load this file when a finding touches Tailwind syntax, the token system,
@@ -16,9 +16,9 @@ specific claim older than ~6 months.
 
 ---
 
-## 0 — v4 syntax, the grep sweep, and fixing correctly
+## 0 - v4 syntax, the grep sweep, and fixing correctly
 
-**Moved to `tailwind-v4.md`** — the v3→v4 correction table, the review grep
+**Moved to `tailwind-v4.md`** - the v3→v4 correction table, the review grep
 checklist, and the table of plausible-but-wrong fixes. Those three are needed on
 nearly every run, so they live in a small file you can load at fix time without
 pulling this whole reference in with them.
@@ -28,7 +28,7 @@ assumes you already have.
 
 ---
 
-## 1 — Why utility classes are defensible (the book's argument, kept)
+## 1 - Why utility classes are defensible (the book's argument, kept)
 
 Worth having ready, because "this HTML is unreadable" is the first thing
 every reviewer says.
@@ -39,7 +39,7 @@ every reviewer says.
 2. **Modifiers put state in the markup.** `hover:`, `focus-visible:`,
    `dark:`, `md:`, `group-hover:` mean the element's full behavior is
    visible in one place.
-3. **You write far less bespoke CSS**, so you name far fewer things —
+3. **You write far less bespoke CSS**, so you name far fewer things -
    and naming is where CSS architectures actually rot.
 4. **Changes are predictable.** Same specificity everywhere; last one
    wins.
@@ -49,7 +49,7 @@ CSS. See §2.
 
 ---
 
-## 2 — Duplication: components first, `@apply` almost never
+## 2 - Duplication: components first, `@apply` almost never
 
 The book offers `@apply` and components as peers. In a React/Next
 codebase they are not peers.
@@ -65,17 +65,17 @@ export function SectionHeading({ children }: { children: React.ReactNode }) {
 **Wrong in this stack:**
 
 ```css
-/* [v3 idiom — do not emit] */
+/* [v3 idiom - do not emit] */
 @layer components { .section-heading { @apply text-2xl font-semibold; } }
 ```
 
 Why: a CSS class cannot carry the props, the `as` polymorphism, the ARIA
 wiring, or the variant logic that the component needs anyway. You end up
 maintaining both. `@apply` also defeats the thing that makes utilities
-readable — you are back to reading a stylesheet to learn what a class does.
+readable - you are back to reading a stylesheet to learn what a class does.
 
 **Legitimate `@apply` / `@utility` uses** (short list, hold the line):
-- Styling markup you do not control — third-party widget innards, CMS
+- Styling markup you do not control - third-party widget innards, CMS
   output, `dangerouslySetInnerHTML`.
 - One or two genuine base-layer resets in `@layer base` (e.g. restoring
   `button { cursor: pointer }`, see §6).
@@ -83,7 +83,7 @@ readable — you are back to reading a stylesheet to learn what a class does.
 
 If you do register one, use `@utility name { … }`, not
 `@layer components`. `@utility` participates in Tailwind's ordering, so a
-later utility class still overrides it — which is the whole point of the
+later utility class still overrides it - which is the whole point of the
 book's `@layer` argument, now handled properly.
 
 > **Next.js gotcha:** `@apply` inside a CSS Module or `styled-jsx` block
@@ -94,11 +94,11 @@ book's `@layer` argument, now handled properly.
 **Variants:** for a component with real variant matrices, use `cva`
 (class-variance-authority) plus `tailwind-merge` via `cn()`. Conditional
 classes appended without `twMerge` produce `px-4 px-6` and whichever
-Tailwind emitted last wins — not whichever you wrote last. That is a
+Tailwind emitted last wins - not whichever you wrote last. That is a
 frequent, invisible bug.
 
 **Never construct class names by interpolation.** The book flags this and
-v4's scanner makes it worse — it scans source as plain text and does not
+v4's scanner makes it worse - it scans source as plain text and does not
 evaluate JS.
 
 ```ts
@@ -110,18 +110,18 @@ const TONE = { rose: "text-rose-300 hover:text-rose-700", sky: "text-sky-300 hov
 
 ---
 
-## 3 — Typography
+## 3 - Typography
 
 ### Scale
 
 Thirteen steps, `text-xs` → `text-9xl`, `text-base` = 1rem/1.5rem. Each
 step carries a paired line-height. From `text-5xl` up the paired leading
-is `1` — **so any display heading needs its leading re-checked by eye**;
+is `1` - **so any display heading needs its leading re-checked by eye**;
 `1` is tight enough to collide descenders with the next line at large
 sizes on two-line headings.
 
 v4 gives you the slash form to override inline: `text-3xl/9`,
-`text-lg/relaxed`. Prefer that over a separate `leading-*` class — it keeps
+`text-lg/relaxed`. Prefer that over a separate `leading-*` class - it keeps
 the pairing in one token.
 
 **Design calls:**
@@ -139,7 +139,7 @@ the pairing in one token.
 
 `font-thin` 100 → `font-black` 900. Two facts the book glosses:
 - Weights only exist if the loaded font ships them. With `next/font`,
-  `weight: ["400","600"]` means `font-bold` (700) **synthesizes** — the
+  `weight: ["400","600"]` means `font-bold` (700) **synthesizes** - the
   browser fakes it, and it looks smeared. Check the font import before
   writing a weight finding.
 - 100/200 are unreadable below ~24px on most screens. `font-thin` body
@@ -154,14 +154,14 @@ the pairing in one token.
 underline sitting on the baseline.
 
 `uppercase` / `lowercase` / `capitalize` / `normal-case`. `capitalize`
-is title-case-by-CSS and mangles proper nouns and acronyms — prefer
+is title-case-by-CSS and mangles proper nouns and acronyms - prefer
 correct source strings.
 
 `text-left|center|right|justify`. **`text-justify` on the web is a
-finding** — no hyphenation engine, so it produces rivers. Say so.
+finding** - no hyphenation engine, so it produces rivers. Say so.
 
 Vertical: `align-{baseline,top,middle,bottom,text-top,text-bottom,sub,super}`.
-For aligning a lucide icon with a text label, do not use `align-*` — use
+For aligning a lucide icon with a text label, do not use `align-*` - use
 flex: `inline-flex items-center gap-2` with `size-4`.
 
 ### Leading and tracking
@@ -176,12 +176,12 @@ on headings.
 
 ### Special text
 
-`selection:bg-*` / `selection:text-*` — inherited by children, so set it
+`selection:bg-*` / `selection:text-*` - inherited by children, so set it
 once at the root. A product that ships default-blue selection on a warm
 editorial palette is a small, real polish finding.
 
 `first-letter:` and `first-line:` for editorial drop caps. `before:` /
-`after:` exist; the book's advice holds — if the content is meaningful,
+`after:` exist; the book's advice holds - if the content is meaningful,
 put it in a real element, not a pseudo-element the accessibility tree
 handles inconsistently.
 
@@ -191,7 +191,7 @@ handles inconsistently.
 
 `list-disc` / `list-decimal` / `list-none`, `list-inside` / `list-outside`.
 Preflight strips list styling, so a marketing page rendering markdown with
-naked `<ul>`s and no bullets is a Preflight symptom, not a content bug —
+naked `<ul>`s and no bullets is a Preflight symptom, not a content bug -
 that is what `prose` is for.
 
 ### Plugins
@@ -205,7 +205,7 @@ that is what `prose` is for.
 `prose` for long-form / rendered markdown. Sizes `prose-sm|base|lg|xl|2xl`;
 grays `prose-gray|slate|zinc|neutral|stone`; per-element overrides
 `prose-h1:font-bold`, `prose-a:decoration-1`, and the `prose-headings:`
-group. `dark:prose-invert` is required in any themed product — `prose`
+group. `dark:prose-invert` is required in any themed product - `prose`
 hardcodes its own colors and will render near-black text on a dark
 surface. That is a WCAG failure, not a nitpick.
 
@@ -215,7 +215,7 @@ to size text inputs.
 
 ---
 
-## 4 — Color and opacity
+## 4 - Color and opacity
 
 Pattern is uniform: `{prefix}-{color}-{level}` across `text-`, `bg-`,
 `border-`, `ring-`, `divide-`, `outline-`, `decoration-`, `caret-`,
@@ -229,27 +229,27 @@ Opacity is the slash modifier: `text-ink/70`, `bg-black/50`,
 **Design calls:**
 - **Raw palette names in feature code are a finding.** `text-gray-500`
   scattered through components means there is no system. Ship semantic
-  tokens in `@theme` — `--color-ink`, `--color-muted`, `--color-paper`,
-  `--color-rule`, `--color-accent` — and reference those. This is what
+  tokens in `@theme` - `--color-ink`, `--color-muted`, `--color-paper`,
+  `--color-rule`, `--color-accent` - and reference those. This is what
   makes theming, and the light/dark pass, possible at all.
 - v4 palettes are **oklch**, so `color-mix()` and gradient interpolation
   behave perceptually. `from-x to-y` interpolates in oklab by default,
   which is why v4 gradients no longer go gray in the middle. If someone
   needs the old muddy behavior for brand-match, `bg-linear-to-r/srgb`.
 - Opacity is not a substitute for a color token. `text-ink/40` on a
-  patterned or image background has an unpredictable computed contrast —
+  patterned or image background has an unpredictable computed contrast -
   measure it, do not eyeball it.
 - The four 4.2 additions (`mauve`, `olive`, `mist`, `taupe`) are the
   cheapest available exit from AI-slop gray. Suggest them by name.
 
 ---
 
-## 5 — The box
+## 5 - The box
 
 ### Spacing
 
 `p{t,b,l,r,x,y}-{n}` and `m{…}-{n}`; each `n` = 0.25rem. In v4 the whole
-scale derives from one variable — `@theme { --spacing: 0.25rem; }` — and
+scale derives from one variable - `@theme { --spacing: 0.25rem; }` - and
 is **dynamic**, so `p-13` or `mt-19` now generate even though they are not
 in the v3 list. That is a footgun: it means a typo'd spacing value
 compiles silently. A repo using nine distinct spacing steps on one screen
@@ -259,14 +259,14 @@ Margins take `-auto` (`mx-auto` centers) and negatives (`-mt-4`).
 
 Prefer **`gap-*` on a flex/grid parent** to margins on children. Margin
 collapse, `:last-child` exceptions, and `space-y-*` all disappear. Reach
-for `space-y-*` only when the container cannot be a flex/grid parent —
+for `space-y-*` only when the container cannot be a flex/grid parent -
 and note v4 changed its selector to `:not(:last-child)` with
 `margin-bottom`, so any v3-era override targeting
 `:not([hidden]) ~ :not([hidden])` is now dead code.
 
 The book's aside stands: **most products are under-padded.** Touch targets
 need ≥ 24×24 CSS px (WCAG 2.2 AA, 2.5.8) and want 44×44. That is
-measurable — hold the line on it.
+measurable - hold the line on it.
 
 ### Borders
 
@@ -279,13 +279,13 @@ Styles `border-{solid,dashed,dotted,double,hidden,none}`. Per-side color:
 in the text color. In a review, that is a confirmed defect with a
 one-token fix.
 
-Radius: `rounded-{none,xs,sm,md,lg,xl,2xl,3xl,4xl,full}` — note the v4
+Radius: `rounded-{none,xs,sm,md,lg,xl,2xl,3xl,4xl,full}` - note the v4
 shift, and that `4xl` is new. Per-corner `rounded-tl-*` etc., per-side
 `rounded-b-*`. Design call: **one radius per product, two at most**
 (a container radius and a control radius). Uniform `rounded-xl` on
 everything is on the AI-slop list; so is five different radii on one card.
 
-Rings are box-shadow based, so they do not shift layout — which is exactly
+Rings are box-shadow based, so they do not shift layout - which is exactly
 why they are the right tool for focus. In v4, bare `ring` is 1px
 `currentColor`; the v3 muscle-memory `ring` (3px blue) is now `ring-3
 ring-blue-500`. `ring-inset`, `ring-offset-{n}`, `ring-offset-{color}`.
@@ -293,7 +293,7 @@ ring-blue-500`. `ring-inset`, `ring-offset-{n}`, `ring-offset-{color}`.
 **Focus recipe for this stack:**
 `focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper`.
 `focus:outline-none` with no replacement is an automatic WCAG 2.4.7
-failure and caps the score — see the hard rule in `SKILL.md`.
+failure and caps the score - see the hard rule in `SKILL.md`.
 
 ### Backgrounds, shadows, gradients
 
@@ -319,22 +319,22 @@ is decorating a hero.
 
 `bg-clip-text text-transparent` over a gradient gives gradient text. Note
 it inherits the gradient's contrast problems and screen readers are fine
-but Windows High Contrast mode is not — use sparingly, never for body copy.
+but Windows High Contrast mode is not - use sparingly, never for body copy.
 
 Background images: Tailwind gives you positioning, not the URL. In Next.js
 the right answer for a content image is usually **`next/image`**, not a CSS
-background — you get sizing, lazy loading, and no CLS. Reserve
+background - you get sizing, lazy loading, and no CLS. Reserve
 `bg-[url(...)]` for genuine decoration. Positioning
 (`bg-center`, `bg-top-left`, …), tiling (`bg-repeat`, `bg-repeat-x`,
 `bg-no-repeat`, `bg-repeat-round`, `bg-repeat-space`), attachment
 (`bg-fixed|local|scroll`), and clipping
 (`bg-clip-{border,padding,content,text}`) all behave as the book says.
-`bg-fixed` parallax is broken on iOS Safari and janky elsewhere — flag it.
+`bg-fixed` parallax is broken on iOS Safari and janky elsewhere - flag it.
 
 Filters: `blur-{xs…3xl}`, `backdrop-blur-*`, `grayscale`, `sepia`,
 `brightness-*`, `contrast-*`, `saturate-*`, `invert`, `hue-rotate-*`.
 Backdrop blur on a large fixed surface is a real INP/paint cost on
-low-end Android — worth a perf note when it wraps a scrolling region.
+low-end Android - worth a perf note when it wraps a scrolling region.
 
 ### Height and width
 
@@ -343,30 +343,30 @@ low-end Android — worth a perf note when it wraps a scrolling region.
 **`size-{n}`** when both match.
 
 v4 additions worth knowing: `w-dvw` / `h-dvh` (and `svh`/`lvh`).
-**`h-screen` on mobile is a bug** — it ignores the collapsing browser
+**`h-screen` on mobile is a bug** - it ignores the collapsing browser
 chrome and produces a scroll jump. `h-dvh` is the fix. That is a
 confirmed, reproducible finding, not taste.
 
 `min-w-*` / `min-h-*` / `max-w-*` / `max-h-*` all take the full scale in
 v4 (not the tiny v3 subset). `max-w-{xs…7xl}` (20rem → 80rem),
 `max-w-prose` (65ch), `max-w-full`, `max-w-none`. `max-w-screen-*` is
-**gone** — see §0.
+**gone** - see §0.
 
 `min-w-0` on a flex child is the fix for "my truncated text won't
-truncate" — flex items default to `min-width: auto`. Pairs with
+truncate" - flex items default to `min-width: auto`. Pairs with
 `truncate`.
 
 ### Visibility
 
 `hidden` (`display:none`, out of layout) vs `invisible`
 (`visibility:hidden`, keeps its space) vs `sr-only` (visually gone, still
-announced). Three different meanings — using `hidden` for a screen-reader
+announced). Three different meanings - using `hidden` for a screen-reader
 label destroys it, and `opacity-0` alone leaves an invisible click target.
 Getting this wrong is an accessibility finding, not a style one.
 
 ---
 
-## 6 — Preflight, and the findings it generates
+## 6 - Preflight, and the findings it generates
 
 Preflight zeroes heading styles, list styles, margins, and border widths;
 sets `border-style: solid` with a default color; makes images `display:
@@ -386,18 +386,18 @@ Two v4 Preflight changes produce recurring, real findings:
    ```
 
    Check for this **before** writing N separate "missing `cursor-pointer`"
-   findings — it is one root cause, one fix.
+   findings - it is one root cause, one fix.
 
 2. **Placeholders are `currentColor` at 50%.** On a muted-text input that
    can land under 4.5:1. Measure it.
 
-Preflight also means `display: block` images — an inline icon or avatar
+Preflight also means `display: block` images - an inline icon or avatar
 that suddenly breaks to its own line is this, and the fix is `inline-block`
 or a flex parent, not a margin hack.
 
 ---
 
-## 7 — Modifiers
+## 7 - Modifiers
 
 `hover:`, `focus:`, `focus-visible:`, `focus-within:`, `active:`,
 `disabled:`, `checked:`, `required:`, `invalid:`, `dark:`, `motion-safe:`,
@@ -413,11 +413,11 @@ Judgment calls:
 - **`focus:` vs `focus-visible:`.** Use `focus-visible:` for the ring so
   mouse users do not get a ring on click, but never remove `:focus`
   styling without a `focus-visible` replacement.
-- **`motion-reduce:`** — any transform/opacity animation over ~200ms needs
+- **`motion-reduce:`** - any transform/opacity animation over ~200ms needs
   a reduced-motion path. WCAG 2.3.3. Measurable, hold the line.
-- **`dark:`** — in v4, class-based dark mode is opt-in:
+- **`dark:`** - in v4, class-based dark mode is opt-in:
   `@custom-variant dark (&:where(.dark, .dark *));`. If a repo has `dark:`
-  classes and no `@custom-variant`, they are following the OS only — often
+  classes and no `@custom-variant`, they are following the OS only - often
   not what the theme toggle in the header implies. Check both.
 - `group-has-*` and `peer-checked:` remove most of the JS people write for
   disclosure and custom-control styling. Suggest them when you see state
@@ -425,14 +425,14 @@ Judgment calls:
 
 ---
 
-## 8 — Arbitrary values
+## 8 - Arbitrary values
 
 `m-[104px]`, `text-[#34da33]`, `grid-cols-[max-content_auto]`, whole
 properties `[mask-type:alpha]`, CSS vars `bg-(--brand)`.
 
 The book's rule is the right one and gets sharper in a design review:
 **an arbitrary value is a one-off escape hatch; a repeated arbitrary value
-is a missing token.** Three occurrences of `text-[13px]` is a finding —
+is a missing token.** Three occurrences of `text-[13px]` is a finding -
 the fix is `@theme { --text-xs-plus: 0.8125rem; }`, not a fourth
 occurrence. Grep for `-\[` when auditing a codebase's system health; the
 density of arbitrary values is a decent proxy for whether a design system
@@ -440,13 +440,13 @@ actually exists.
 
 ---
 
-## 9 — Review checklist (what to actually grep for)
+## 9 - Review checklist (what to actually grep for)
 
 In `tailwind-v4.md` §2.
 
 ---
 
-## 10 — Page layout
+## 10 - Page layout
 
 ### Container
 
@@ -467,14 +467,14 @@ utility:
 **Design call:** most products want a *content* max-width, not a
 breakpoint-stepped one. `max-w-6xl mx-auto px-6` gives a stable measure;
 `container` snaps width at each breakpoint, which makes the layout jump.
-Say which you mean. And viewport meta — `width=device-width,initial-scale=1`
-— is handled by Next.js's `viewport` export; a missing one is a routing/
+Say which you mean. And viewport meta - `width=device-width,initial-scale=1`
+- is handled by Next.js's `viewport` export; a missing one is a routing/
 metadata finding, not a CSS one.
 
 ### Float, position, z-index
 
 `float-left|right|none`, `clear-left|right|both|none`. Legacy only. If new
-code uses floats for layout, that is a finding — grid or flex instead. The
+code uses floats for layout, that is a finding - grid or flex instead. The
 one live use is wrapping text around a pull-quote or image.
 
 `z-{0,10,20,30,40,50,auto}`, negatives `-z-10`, arbitrary `z-[60]`. v4
@@ -493,7 +493,7 @@ toast) and map each to one value. Arbitrary `z-[9999]` is the symptom.
 **Design calls that matter more than the utilities:**
 - Use a real `<table>` for tabular data. A grid of divs loses row/column
   semantics for screen readers. This is an accessibility finding.
-- Zebra striping is usually the wrong fix for a dense table — try
+- Zebra striping is usually the wrong fix for a dense table - try
   `border-b border-rule` per row plus more vertical padding first. Tufte:
   maximize the data-ink ratio; stripes are ink that carries no data.
 - Right-align numeric columns and use `tabular-nums` (`font-variant-numeric`)
@@ -516,23 +516,23 @@ column overrides when the cards have a natural minimum width.
 
 ### Columns (multi-column flow)
 
-`columns-{1..12}` or `columns-{3xs…7xl}` (the book's `column-` is a typo —
+`columns-{1..12}` or `columns-{3xs…7xl}` (the book's `column-` is a typo -
 the utility is plural), `columns-auto`, gap via `gap-*`, `break-inside-avoid`
 on children.
 
 Use for a masonry-ish photo wall or a long link list. **Do not use for body
-copy** — reading order runs down column 1 then back up to column 2, which
+copy** - reading order runs down column 1 then back up to column 2, which
 means the reader scrolls down and back up on every screen. That is a
 finding.
 
 ### Flexbox
 
 Parent: `flex`, `flex-row|row-reverse|col|col-reverse` (the book's
-`flex-column` is wrong — it is `flex-col`), `flex-wrap|wrap-reverse|nowrap`
+`flex-column` is wrong - it is `flex-col`), `flex-wrap|wrap-reverse|nowrap`
 (the book's `flex-no-wrap` is v1 syntax).
 
 Children: `basis-{n|fraction|auto|full}`; `grow` / `grow-0`, `shrink` /
-`shrink-0` (**v4 names** — `flex-grow-*` / `flex-shrink-*` are removed);
+`shrink-0` (**v4 names** - `flex-grow-*` / `flex-shrink-*` are removed);
 shorthands `flex-1`, `flex-auto`, `flex-initial`, `flex-none`.
 
 The book's `flex-1` vs `flex-auto` distinction is the one worth keeping:
@@ -545,7 +545,7 @@ columns whose content is unequal is usually the bug.
 **The book's accessibility claim about `order-` is backwards and must not
 be repeated.** It suggests reordering so a screen reader hits content
 first. In practice `order-*` (and `flex-row-reverse`, and grid placement)
-changes only the *visual* order — the DOM order is what keyboard focus and
+changes only the *visual* order - the DOM order is what keyboard focus and
 screen readers follow. A visual order that disagrees with DOM order
 produces a tab sequence that jumps around the page. WCAG 2.4.3 (Focus
 Order) / 1.3.2 (Meaningful Sequence). **Fix the DOM order; do not fix it
@@ -570,7 +570,7 @@ The second is shorter and does not need a direction.
 
 ---
 
-## 11 — Animation
+## 11 - Animation
 
 Tailwind ships four keyframe animations: `animate-spin`, `animate-ping`,
 `animate-pulse`, `animate-bounce`, reset with `animate-none`. v4 lets you
@@ -593,11 +593,11 @@ Narrower: `transition-colors`, `transition-opacity`, `transition-shadow`,
 
 Duration `duration-{75,100,150,200,300,500,700,1000}`, delay `delay-*`,
 easing `ease-linear|in|out|in-out|initial`, all arbitrary-friendly. Default
-duration is 0 — **`hover:bg-x` with no `duration-*` does nothing gradual**,
+duration is 0 - **`hover:bg-x` with no `duration-*` does nothing gradual**,
 which is the most common "why isn't my transition working" finding.
 
 v4 adds `transition-discrete` and the `starting:` variant (`@starting-style`),
-which is how you animate an element in from `display: none` — relevant for
+which is how you animate an element in from `display: none` - relevant for
 popovers and `<dialog>` without a JS animation library.
 
 ### Transforms
@@ -606,7 +606,7 @@ popovers and `<dialog>` without a JS animation library.
 `skew-x-` / `skew-y-`, `translate-x-` / `translate-y-` (spacing scale plus
 `px`, `full`, fractions), `origin-{center,top,bottom-right,…}`. v4 adds 3D:
 `rotate-x-*`, `rotate-y-*`, `rotate-z-*`, `perspective-*`, `transform-3d`,
-and these are individual CSS properties now — so reset with `scale-none`,
+and these are individual CSS properties now - so reset with `scale-none`,
 not `transform-none`.
 
 ### Motion: the design rules
@@ -624,13 +624,13 @@ the judgment is not.
   stock-Tailwind tell.
 - **Animate cheap properties.** `transform` and `opacity` are composited.
   Animating `width`, `height`, `top`, or `margin` triggers layout on every
-  frame — a real INP/jank finding on a list.
+  frame - a real INP/jank finding on a list.
 - **`animate-pulse` is a skeleton, not a spinner.** Skeletons that do not
   match the shape of the content they replace cause a visible layout jump
   on load. Match the block sizes.
 - **`animate-spin` goes on the SVG itself**, not a wrapper. With
   `lucide-react`: `<Loader2 className="size-4 animate-spin" aria-hidden />`
-  plus a real `aria-live` / `role="status"` label — a spinning icon with no
+  plus a real `aria-live` / `role="status"` label - a spinning icon with no
   accessible name announces nothing.
 - **`animate-ping` / `animate-bounce` are attention-grabbers.** One per
   screen, maximum, and only for something that genuinely needs attention.
@@ -638,29 +638,29 @@ the judgment is not.
 - **Reduced motion is mandatory.** Wrap anything beyond a color fade:
   `motion-safe:transition-transform motion-safe:hover:scale-105`, or
   globally in `@layer base` with a `prefers-reduced-motion: reduce` block
-  zeroing durations. WCAG 2.3.3. Measurable — hold the line.
+  zeroing durations. WCAG 2.3.3. Measurable - hold the line.
 
 ### Cursor, selection, resize
 
 `cursor-{auto,default,pointer,text,move,wait,not-allowed,grab,grabbing,…}`.
-See §6 — in v4 you need `cursor-pointer` (or the base-layer restore) on
+See §6 - in v4 you need `cursor-pointer` (or the base-layer restore) on
 buttons or the whole app feels dead. `cursor-not-allowed` on a disabled
 button is correct; on a `disabled` element it needs a wrapper, since
 disabled elements do not fire pointer events.
 
 `select-none` on UI chrome (button labels, nav) prevents ugly drag-select.
 `select-all` on a copyable token/API key is one of the few genuinely good
-uses — the book's blanket "please don't" is too broad; the real rule is
+uses - the book's blanket "please don't" is too broad; the real rule is
 never on body content.
 
 `resize` / `resize-x` / `resize-y` / `resize-none` (the book's `reset-none`
-is a typo). **`resize-none` on a `<textarea>` is usually a finding** — you
+is a typo). **`resize-none` on a `<textarea>` is usually a finding** - you
 took away a control the user wanted. v4's `field-sizing-content` is the
 better answer: the textarea grows with its content.
 
 ---
 
-## 12 — Responsive design
+## 12 - Responsive design
 
 Breakpoints are **min-width and up**, mobile-first: unprefixed = all
 widths, then `sm:` 40rem/640px, `md:` 48rem/768px, `lg:` 64rem/1024px,
@@ -670,7 +670,7 @@ widths, then `sm:` 40rem/640px, `md:` 48rem/768px, `lg:` 64rem/1024px,
 
 To scope a utility to a *range*, use the `max-*` variants (`max-md:hidden`)
 or stack (`md:max-lg:flex`). The book only teaches "negate it at the next
-breakpoint up" — that still works and is often clearer, but `max-*` exists
+breakpoint up" - that still works and is often clearer, but `max-*` exists
 and reads better for one-off exceptions.
 
 Stacking with other modifiers is fine and left-to-right in v4:
@@ -680,7 +680,7 @@ Stacking with other modifiers is fine and left-to-right in v4:
 
 - **Show/hide:** `hidden lg:block` (appears on desktop), `lg:hidden`
   (mobile-only, e.g. the hamburger). Note both **still render and still
-  download** — `hidden` is CSS, not conditional rendering. Two full copies
+  download** - `hidden` is CSS, not conditional rendering. Two full copies
   of a nav in the DOM is a duplicate-landmark and duplicate-`id`
   accessibility problem, and a payload problem if the hidden branch pulls
   images. Prefer one nav that reflows.
@@ -688,7 +688,7 @@ Stacking with other modifiers is fine and left-to-right in v4:
   extract it into a component or a `@utility` once it appears three times.
   v4's `text-3xl/9` slash form keeps leading paired as it scales.
 - **Card grid:** `grid gap-4 md:grid-cols-2 lg:grid-cols-4`. Set `gap-*`
-  once on the parent instead of `mb-6 lg:mb-0` on children — the book's
+  once on the parent instead of `mb-6 lg:mb-0` on children - the book's
   child-margin version is v3-era and produces a trailing gap.
 - **Nav:** `hidden lg:flex lg:items-center`, with `divide-y lg:divide-y-0`
   for the stacked state.
@@ -707,29 +707,29 @@ Stacking with other modifiers is fine and left-to-right in v4:
    `<X className="size-5" aria-hidden />`.
 3. **The vanilla-JS `classList.add("hidden")` toggle is wrong in React.**
    State drives the class list; do not mutate `classList`. And the book's
-   version ships an inaccessible menu — a real disclosure needs
+   version ships an inaccessible menu - a real disclosure needs
    `aria-expanded`, `aria-controls`, focus moved into the panel, `Escape`
    to close, and focus returned to the trigger. That gap is worth its own
    finding whenever you see a hand-rolled mobile menu.
 4. **Test at 320px.** The book's device table starts at 360. 320px
    (iPhone SE) is still the practical floor, and it is where horizontal
-   overflow shows up. Also test at 200% zoom — WCAG 1.4.10 reflow requires
+   overflow shows up. Also test at 200% zoom - WCAG 1.4.10 reflow requires
    no horizontal scroll at 320 CSS px equivalent.
 5. **Long class strings are a real cost.** When one element carries four
    breakpoint variants across six properties, that is the signal to extract
-   a component or reach for a container query — not to keep typing.
+   a component or reach for a container query - not to keep typing.
 
 ---
 
-## 12b — Fixing correctly (read before the Mode D/F fix loop)
+## 12b - Fixing correctly (read before the Mode D/F fix loop)
 
 In `tailwind-v4.md` §3.
 
-## 13 — Customizing Tailwind
+## 13 - Customizing Tailwind
 
 **Chapter 8 of the book is almost entirely obsolete.** Every mechanism it
-teaches — `tailwind.config.js`, `theme.extend`, `content`, `safelist`,
-`corePlugins`, `separator`, `resolveConfig`, `darkMode` — has been
+teaches - `tailwind.config.js`, `theme.extend`, `content`, `safelist`,
+`corePlugins`, `separator`, `resolveConfig`, `darkMode` - has been
 replaced or removed. The *reasons* to customize are unchanged; the
 machinery is different. Do not port any snippet from that chapter as-is.
 
@@ -737,8 +737,8 @@ machinery is different. Do not port any snippet from that chapter as-is.
 
 | v3 config key | v4 |
 |---|---|
-| `theme: { … }` (override) | `@theme { --color-*: initial; … }` — reset the namespace, then redefine |
-| `theme.extend: { … }` | plain `@theme { … }` — v4 extends by default |
+| `theme: { … }` (override) | `@theme { --color-*: initial; … }` - reset the namespace, then redefine |
+| `theme.extend: { … }` | plain `@theme { … }` - v4 extends by default |
 | `theme.screens` | `@theme { --breakpoint-3xl: 120rem; }` |
 | `theme.colors` | `@theme { --color-brand-500: oklch(…); }` |
 | `theme.spacing` | `@theme { --spacing: 0.25rem; }` (one variable drives the whole scale) |
@@ -750,13 +750,13 @@ machinery is different. Do not port any snippet from that chapter as-is.
 | `prefix: "tw"` → `tw-flex` | `@import "tailwindcss" prefix(tw);` → **`tw:flex`**, `tw:hover:bg-x`. It is a variant-style prefix now, not a name prefix |
 | `important: true` | `@import "tailwindcss" important;` |
 | `separator: "--"` | **removed** |
-| `darkMode: "media"` | built in — `dark:` follows `prefers-color-scheme` with no config |
+| `darkMode: "media"` | built in - `dark:` follows `prefers-color-scheme` with no config |
 | `darkMode: "class"` | `@custom-variant dark (&:where(.dark, .dark *));` |
-| `plugins: [plugin(({addVariant}) => …)]` | `@custom-variant second-of-type (&:nth-of-type(2));` — or keep the JS plugin and load it with `@plugin "./my-plugin.js";` |
+| `plugins: [plugin(({addVariant}) => …)]` | `@custom-variant second-of-type (&:nth-of-type(2));` - or keep the JS plugin and load it with `@plugin "./my-plugin.js";` |
 | `addUtilities` | `@utility big-bold-text { font-size: 1.5rem; font-weight: 700; }` |
 | `matchUtilities` | `@utility tab-* { tab-size: --value(integer); }` |
 | `addBase` | `@layer base { h4 { … } }` |
-| `resolveConfig` in JS | **removed.** Theme values *are* CSS custom properties — read them with `getComputedStyle(el).getPropertyValue("--color-brand-500")`, or `@theme static` to force emission |
+| `resolveConfig` in JS | **removed.** Theme values *are* CSS custom properties - read them with `getComputedStyle(el).getPropertyValue("--color-brand-500")`, or `@theme static` to force emission |
 
 A legacy JS config can still be loaded with `@config "./tailwind.config.js";`.
 Treat its presence as migration debt worth a finding, not a crime.
@@ -779,13 +779,13 @@ Treat its presence as migration debt worth a finding, not a crime.
 
 That single block generates `bg-brand-500`, `text-brand-500`,
 `border-brand-500`, `ring-brand-500`, `from-brand-500`, `3xl:`,
-`rounded-card`, `ease-out-quint` — every consumer of the namespace, for
+`rounded-card`, `ease-out-quint` - every consumer of the namespace, for
 free. **This is the strongest argument for the token layer**, and it is
 what §4's "raw palette names are a finding" is really asking for.
 
 To *replace* rather than extend a namespace, reset it first:
 `@theme { --color-*: initial; --color-ink: …; }`. `--*: initial` nukes
-the entire default theme — occasionally right for a tightly controlled
+the entire default theme - occasionally right for a tightly controlled
 design system, usually overkill.
 
 ### Themes: the book's biggest miss
@@ -814,13 +814,13 @@ toggle.
 
 Practical consequence: with this in place, `dark:` variants mostly stop
 being necessary. A codebase carrying `bg-white dark:bg-gray-900
-text-gray-900 dark:text-gray-100` on every element has no token layer —
+text-gray-900 dark:text-gray-100` on every element has no token layer -
 `bg-paper text-ink` does the same job once. **Doubling every color class
 with a `dark:` twin is a system-design finding**, and one of the more
 valuable ones you can give, because it removes hundreds of classes and
 kills a whole category of "someone forgot the dark variant" contrast bugs.
 
-### Class detection — the failure mode to grep for
+### Class detection - the failure mode to grep for
 
 v4 auto-detects source files (honoring `.gitignore`), so the book's
 `content` glob-maintenance problem is mostly gone. Two live traps remain:
@@ -831,7 +831,7 @@ v4 auto-detects source files (honoring `.gitignore`), so the book's
    renders unstyled *only in production*, because dev happened to have the
    class from somewhere else.
 2. **Interpolated class names still do not work**, for exactly the reason
-   the book gives — the scanner reads source as plain text. See §2. The
+   the book gives - the scanner reads source as plain text. See §2. The
    escape hatch is `@source inline(...)`, but reach for the literal-string
    map first: a safelist ships CSS nobody uses, and it hides the problem
    instead of fixing it.
@@ -845,28 +845,28 @@ The book's tour (`hover`, `focus`, `active`, `disabled`, `checked`,
 `before`/`after`, and the form-state set) is still accurate. Additions
 that change what you can build without JS:
 
-- `has-*` — style a parent from its children: `has-[:checked]:border-accent`
+- `has-*` - style a parent from its children: `has-[:checked]:border-accent`
   on a label wrapping a radio. Replaces most "mirror this into React state
   purely for styling" code.
-- `not-*` — `not-hover:opacity-70`, `not-first:border-t`.
-- `*:` and `**:` — style direct / all descendants: `*:not-first:mt-2`.
-- `peer-*` — sibling-driven state (`peer-invalid:text-danger`), the correct
+- `not-*` - `not-hover:opacity-70`, `not-first:border-t`.
+- `*:` and `**:` - style direct / all descendants: `*:not-first:mt-2`.
+- `peer-*` - sibling-driven state (`peer-invalid:text-danger`), the correct
   tool for inline form validation messages.
-- `@container` + `@sm:` / `@max-md:` — see §12.
-- `starting:` — entry animations from `display:none`.
-- `supports-[…]:` and arbitrary variants `[&_svg]:size-4` — the latter is
+- `@container` + `@sm:` / `@max-md:` - see §12.
+- `starting:` - entry animations from `display:none`.
+- `supports-[…]:` and arbitrary variants `[&_svg]:size-4` - the latter is
   how you style `lucide-react` icons inside a button variant without
   touching every call site.
 - `nth-*`, `in-*`, `inert:`, `open:`, `popover-open:`.
 
-`group-hover` on a touch device has the same problem as `hover:` — see
+`group-hover` on a touch device has the same problem as `hover:` - see
 §12. And a `focus-within:` on a card is usually the accessible companion
 to a `group-hover:` reveal.
 
 ### Legacy CSS integration
 
 `prefix(tw)` and `important` are the two escape hatches, both unchanged in
-intent. Both are **migration tools with a shelf life** — if a codebase has
+intent. Both are **migration tools with a shelf life** - if a codebase has
 shipped `@import "tailwindcss" important;` permanently, every utility now
 outranks every deliberate override, and the next person to write a
 one-off fix will not be able to. Flag it as debt with an owner, not as a

@@ -1,56 +1,119 @@
-# Tailwind v4 — the always-load half
+# Tailwind v4 - the always-load half
 
 **Load this whenever a finding or a fix touches Tailwind class syntax**, which
 is most of them on this stack. It is the small file on purpose: the correction
 table, the fix table and the grep sweep are needed at fix time on nearly every
-run, and `tailwind.md` (the full craft reference — measure, scale, layout,
+run, and `tailwind.md` (the full craft reference - measure, scale, layout,
 motion, theming) is a deep read you should pull only when the question is
 actually about one of those.
 
 The stack this skill reviews is **Tailwind v4.3.x + Next.js App Router +
 React 19 + pnpm + `lucide-react`**.
 
-**Currency:** verified 2026-07-30 against tailwindcss.com. Latest release
-4.3.3 (4.3 shipped 2026-05-08). Re-verify before asserting a version-specific
-claim older than ~6 months.
+**Currency:** verified 2026-07-30 **by compiling every row below against
+tailwindcss 4.3.3** (latest; 4.3 shipped 2026-05-08), not by reading the docs.
+Re-verify before asserting a version-specific claim older than ~6 months, and
+re-verify **by compilation** - the docs describe intent, the compiler decides.
+
+```bash
+# The 30-second check. Never file a "this class is dead" finding without it.
+mkdir -p /tmp/twcheck && cd /tmp/twcheck
+ln -sfn <project>/node_modules node_modules          # resolves tailwindcss
+echo '@import "tailwindcss";' > in.css
+echo '<div class="THE-CLASS another-class"></div>' > probe.html
+npx @tailwindcss/cli@<version> -i in.css -o out.css --content ./probe.html
+grep -E "^[[:space:]]*\.THE-CLASS \{" -A3 out.css   # rules are INDENTED inside @layer
+```
+
+Two traps that made this table wrong for a year: the CLI package is
+`@tailwindcss/cli`, not `tailwindcss`, and the emitted rules are indented
+inside `@layer utilities`, so an anchored `^\.class` grep reports "dead" for
+every class that exists.
 
 **Check the version before writing a single class:** `pnpm ls tailwindcss`, or
 the shape of the CSS entry file (`@import "tailwindcss"` = v4, `@tailwind base`
-= v3). A fix written in v3 syntax against a v4 build silently does nothing,
-which is worse than no fix — it consumes a finding ID and looks like progress.
+= v3).
+
+A fix written in v3 syntax lands in one of three states, and they are not
+equally bad: it may do **nothing** (group A - worse than no fix, because it
+consumes a finding ID and looks like progress), it may work **exactly as
+intended** (group B - most of the famous renames, still aliased), or it may
+silently do something **different** (group C - the one that actually ships
+bugs). Know which before you write either the fix or the finding.
 
 ---
 
-## 1 — The v3 → v4 correction table
+## 1 - The v3 → v4 correction table
 
-The single highest-value table in the skill. Emitting v3 syntax in a fix is a
-real defect, not a style quibble — most of these silently do nothing.
+The single highest-value table in the skill, and the one most likely to make
+you file a finding that is not real. **Sorted by actual risk, because
+"renamed" and "removed" are not the same hazard.**
 
-| Book says **[v3]** | Emit instead **[v4]** |
+Emit v4 spelling in every fix you write. But before docking a codebase for v3
+spelling, check which group it is in - **group B is not a defect.**
+
+### A. Genuinely REMOVED - generates no CSS, silently does nothing
+
+Real defects wherever they appear. Verified: no rule emitted by 4.3.3.
+
+| v3 | Emit instead |
+|---|---|
+| `bg-opacity-50`, `text-opacity-50`, `border-opacity-*`, `ring-opacity-*`, `divide-opacity-*`, `placeholder-opacity-*` | slash modifiers only: `bg-black/50` |
+| `font-hairline` | never existed in v3 either. Weights are `font-thin` (100) → `font-black` (900) |
+
+### B. Renamed but STILL ALIASED - works on 4.3.x. **Not a finding.**
+
+Verified emitting correct CSS in 4.3.3. Write the v4 name in new code; do
+**not** dock existing code for these, and never say they "silently do nothing".
+Filing these is how a review burns its credibility on the one table everyone
+checks.
+
+| v3 (still works) | Preferred v4 |
+|---|---|
+| `flex-shrink-*` / `flex-grow-*` | `shrink-*` / `grow-*` |
+| `bg-gradient-to-r` | `bg-linear-to-r` (plus `bg-radial`, `bg-conic`) |
+| `overflow-ellipsis` | `text-ellipsis` |
+| `shadow-inner` | `inset-shadow-xs` |
+| `decoration-slice` / `decoration-clone` | `box-decoration-slice` / `-clone` |
+| `max-w-screen-md` | still emits `max-width: var(--breakpoint-md)`. Prefer `max-w-3xl` or a container query - but it is **not** gone |
+
+### C. SAME NAME, DIFFERENT VALUE - the dangerous group
+
+The class still compiles, so nothing errors and nothing greps as suspicious;
+it just renders the wrong thing. **This is where the real bugs are**, and where
+a v3-era codebase that "looks fine" is quietly off by one step.
+
+| Class | v3 meant | v4 4.3.3 emits |
+|---|---|---|
+| `rounded-sm` | 0.125rem | `var(--radius-sm)` = **0.25rem**. The scale shifted; `rounded-xs` is the old `rounded-sm` |
+| `shadow-sm` | the small shadow | the old **`shadow`** value (same shift; also `blur`, `drop-shadow`, `backdrop-blur`) |
+| `ring` | 3px, `blue-500` | **1px, `currentColor`**. For the old look: `ring-3 ring-blue-500` |
+| `outline-none` | `outline: 2px solid transparent` - kept a ring in forced-colors | genuinely `outline-style: none`. For the old behaviour use **`outline-hidden`** |
+| `border` | border-color `gray-200` | border-color **`currentColor`** - `border` alone draws in the text colour. Always pair: `border border-rule` |
+| bare `rounded` | 0.25rem | still 0.25rem - unchanged, despite the scale shifting around it |
+
+### D. Syntax that changed shape
+
+| v3 | v4 |
 |---|---|
 | `@tailwind base; @tailwind components; @tailwind utilities;` | `@import "tailwindcss";` |
 | `tailwind.config.js` + `theme.extend` | `@theme { --color-…: …; }` in the CSS entry file |
 | `plugins: [require('@tailwindcss/typography')]` | `@plugin "@tailwindcss/typography";` |
 | `@layer components { .btn { @apply … } }` | `@utility btn { … }` (real CSS, cascade-layered correctly) |
-| `bg-gradient-to-r` | `bg-linear-to-r` (plus `bg-radial`, `bg-conic`) |
-| `rounded` / `rounded-sm` | `rounded-sm` / `rounded-xs` (whole scale shifted down one) |
-| `shadow` / `shadow-sm` | `shadow-sm` / `shadow-xs` (same shift; also `blur`, `drop-shadow`, `backdrop-blur`) |
-| `shadow-inner` | `inset-shadow-xs` (inset shadows got a real scale) |
-| `ring` (3px, blue-500) | `ring-3` + explicit `ring-blue-500`. Bare `ring` is now **1px `currentColor`** |
-| `outline-none` | `outline-hidden` (`outline-none` now genuinely means `outline-style: none`) |
-| `border` inherits `gray-200` | Default border color is **`currentColor`** — `border` alone now draws in the text color. Always pair: `border border-rule` |
 | `!flex` | `flex!` (important moved to the end) |
 | `bg-[--brand]` | `bg-(--brand)` (CSS vars use parens, not brackets) |
-| `flex-shrink-*` / `flex-grow-*` | `shrink-*` / `grow-*` |
-| `overflow-ellipsis` | `text-ellipsis` |
-| `bg-opacity-50`, `text-opacity-50`, `border-opacity-*`, `ring-opacity-*`, `divide-opacity-*`, `placeholder-opacity-*` | slash modifiers only: `bg-black/50` |
 | `grid-cols-[max-content,auto]` | `grid-cols-[max-content_auto]` (commas → underscores) |
-| `first:*:pt-0` | `*:first:pt-0` (variant stacking now reads left-to-right) |
-| `focus:transform-none` to reset a `scale-150` | `focus:scale-none` — transforms are individual properties now; `transition-[opacity,transform]` → `transition-[opacity,scale]` |
-| `max-w-screen-md` | **gone.** Use `max-w-3xl`, a container query (`@md:`), or alias it yourself: `@theme { --width-screen-md: var(--breakpoint-md); }` |
-| `font-hairline` | never existed in v3 either — the book is wrong. Weights are `font-thin` (100) → `font-black` (900) |
-| Preflight gives `button { cursor: pointer }` | **v4 Preflight sets `cursor: default`.** See §6 — this is the #1 source of "why is nothing clickable" polish findings |
-| Preflight placeholder = `gray-400` | now `currentColor` at 50% opacity |
+| `first:*:pt-0` | `*:first:pt-0` (variant stacking reads left-to-right) |
+| `focus:transform-none` to reset a `scale-150` | `focus:scale-none` - transforms are individual properties now; `transition-[opacity,transform]` → `transition-[opacity,scale]` |
+
+### E. Preflight
+
+| Claim | Verified state in 4.3.3 |
+|---|---|
+| Button cursor | Preflight emits **no `cursor` rule at all**, so buttons take the UA default (`default`, not `pointer`). The advice in §6 stands - you still need `cursor-pointer` - but do not write "v4 Preflight sets `cursor: default`", because there is no such declaration to point at. |
+| Placeholder colour | `currentColor` at 50% opacity (was `gray-400`) |
+| Border reset | `border: 0 solid` with no colour, so border-color resolves to `currentColor` |
+
 
 Also gone in v4: `corePlugins`, `resolveConfig`, and Sass/Less/Stylus
 support. Browser floor is Safari 16.4 / Chrome 111 / Firefox 128 (`@property`,
@@ -58,7 +121,7 @@ support. Browser floor is Safari 16.4 / Chrome 111 / Firefox 128 (`@property`,
 
 **New since the book that you should actually reach for:**
 
-- `size-*` — sets width and height together. `size-4` beats `h-4 w-4`, and it
+- `size-*` - sets width and height together. `size-4` beats `h-4 w-4`, and it
   is the correct sizing for a `lucide-react` icon.
 - Container queries are core, no plugin: `@container` on the parent, `@sm:`
   / `@max-md:` on children. For a component that must work in a sidebar
@@ -71,16 +134,16 @@ support. Browser floor is Safari 16.4 / Chrome 111 / Firefox 128 (`@property`,
   `scrollbar-auto` / `scrollbar-none`, `scrollbar-thumb-*`,
   `scrollbar-track-*` (with opacity modifiers), `scrollbar-gutter-stable`.
   A custom-scrollbar finding no longer needs hand-rolled
-  `::-webkit-scrollbar` CSS — call for the utility.
+  `::-webkit-scrollbar` CSS - call for the utility.
 - `zoom-*` and `tab-*` (4.3).
-- Palette is oklch and now 26 ramps — `mauve`, `olive`, `mist`, `taupe`
+- Palette is oklch and now 26 ramps - `mauve`, `olive`, `mist`, `taupe`
   joined in 4.2. Those four are genuinely useful escapes from the
   slate/zinc/gray default-SaaS gray.
 
 ---
 
 
-## 2 — Review checklist (what to actually grep for)
+## 2 - Review checklist (what to actually grep for)
 
 Fast, high-yield sweep on any Tailwind v4 + Next.js codebase:
 
@@ -88,11 +151,11 @@ Fast, high-yield sweep on any Tailwind v4 + Next.js codebase:
 |---|---|
 | `@tailwind ` | v3 directives; build is on the compat path or broken |
 | `tailwind.config` | v3 config still authoritative; theme is not CSS-first |
-| `bg-gradient-to-` | v3 gradient syntax, silently dead in v4 |
+| `bg-gradient-to-` | v3 gradient spelling. **Still works** (aliased) - a style note, not a defect |
 | `\bborder\b` without a `border-` color nearby | `currentColor` border |
-| `focus:outline-none` / `outline-none` | removed focus indicator (WCAG 2.4.7) or v3 spelling |
+| `focus:outline-none` / `outline-none` | in v4 this genuinely removes the outline. A real 2.4.7 defect **unless** a visible replacement (ring, border, background) sits on the same element - check before filing |
 | `h-screen` | mobile viewport bug; want `h-dvh` |
-| `max-w-screen-` | removed in v4 |
+| `max-w-screen-` | **not** removed - still emits `var(--breakpoint-md)`. Prefer `max-w-3xl`; style note only |
 | `!\w` prefix important | v3 important position |
 | `text-\[|p-\[|m-\[` density | missing tokens |
 | `text-(gray\|slate\|zinc)-` in components | no semantic token layer |
@@ -104,7 +167,7 @@ Fast, high-yield sweep on any Tailwind v4 + Next.js codebase:
 ---
 
 
-## 3 — Fixing correctly (read before the Mode D/F fix loop)
+## 3 - Fixing correctly (read before the Mode D/F fix loop)
 
 A fix that resolves the finding and introduces a quieter one is worse than no
 fix, because it also consumes the finding's ID and looks like progress. These
@@ -112,24 +175,24 @@ are the ones where the obvious Tailwind fix is the wrong one.
 
 | Finding | The plausible fix | Why it is wrong | Correct |
 |---|---|---|---|
-| Focus ring missing / removed | add `focus:border-2 border-accent` | borders occupy layout, so focusing shifts the element by 2px — a new CLS defect on every tab press | `focus-visible:ring-2 ring-accent ring-offset-2` — rings are box-shadow, zero layout cost |
-| Elements too cramped | add `mb-4` to each child | reintroduces the trailing gap and margin-collapse; breaks the moment one child is conditionally rendered | `gap-4` on the flex/grid parent — one class, no last-child case |
-| Heading collides on mobile | `leading-tight` alongside `text-6xl` | fixes the symptom, leaves the pairing split across two tokens that drift | `text-6xl/tight` — leading stays welded to the size |
+| Focus ring missing / removed | add `focus:border-2 border-accent` | borders occupy layout, so focusing shifts the element by 2px - a new CLS defect on every tab press | `focus-visible:ring-2 ring-accent ring-offset-2` - rings are box-shadow, zero layout cost |
+| Elements too cramped | add `mb-4` to each child | reintroduces the trailing gap and margin-collapse; breaks the moment one child is conditionally rendered | `gap-4` on the flex/grid parent - one class, no last-child case |
+| Heading collides on mobile | `leading-tight` alongside `text-6xl` | fixes the symptom, leaves the pairing split across two tokens that drift | `text-6xl/tight` - leading stays welded to the size |
 | Full-height section jumps on mobile | `h-screen` (or `min-h-screen`) | `vh` ignores collapsing browser chrome; this *is* the bug | `h-dvh` / `min-h-dvh` |
 | Long text overflows a flex row | `truncate` | flex items default `min-width:auto`, so it will not shrink and will not truncate | `min-w-0 truncate` on the flex child |
-| Hide on mobile | `hidden md:block` on a second copy | ships both copies to the DOM — duplicate landmarks, duplicate `id`s, both payloads | one element that reflows; if genuinely two, only one may carry the landmark/`id` |
+| Hide on mobile | `hidden md:block` on a second copy | ships both copies to the DOM - duplicate landmarks, duplicate `id`s, both payloads | one element that reflows; if genuinely two, only one may carry the landmark/`id` |
 | Hide but keep for screen readers | `hidden` | `display:none` removes it from the a11y tree entirely | `sr-only` |
 | Hide but keep the space | `opacity-0` | leaves a live, invisible click target | `invisible` |
-| Animation feels janky | shorten the `duration-*` | the cost is the property, not the time — `width`/`height`/`top` relayout every frame | animate `transform` / `opacity` (`translate-x-*`, `scale-*`) |
-| Buttons feel dead on hover | add `cursor-pointer` to each button | N edits for one root cause; the next button ships wrong too | one `@layer base` rule restoring `button:not(:disabled){cursor:pointer}` — see `tailwind.md` §6 |
-| Colour is inconsistent across pages | fix the hex at each call site | the next page repeats it; the cascade is unbounded | change the `@theme` variable — every `bg-`/`text-`/`border-`/`ring-` consumer updates at once |
+| Animation feels janky | shorten the `duration-*` | the cost is the property, not the time - `width`/`height`/`top` relayout every frame | animate `transform` / `opacity` (`translate-x-*`, `scale-*`) |
+| Buttons feel dead on hover | add `cursor-pointer` to each button | N edits for one root cause; the next button ships wrong too | one `@layer base` rule restoring `button:not(:disabled){cursor:pointer}` - see `tailwind.md` §6 |
+| Colour is inconsistent across pages | fix the hex at each call site | the next page repeats it; the cascade is unbounded | change the `@theme` variable - every `bg-`/`text-`/`border-`/`ring-` consumer updates at once |
 | Dark mode contrast fails | add a `dark:` twin to the failing class | one of N; the class after it will be forgotten too | scoped vars + `@theme inline` so the token resolves per theme (`tailwind.md` §13) |
 | One-off size needed | `text-[13px]` | fine once, a missing token by the third use | third occurrence → `@theme { --text-xs-plus: … }` |
 
 Two rules that follow from the table and are worth stating on their own:
 
 - **Prefer the token fix, then the base-layer fix, then the call-site fix.**
-  That ordering is also what keeps a fix inside Mode D's stop conditions — a
+  That ordering is also what keeps a fix inside Mode D's stop conditions - a
   `@theme` edit is one file, where the call-site version is the "single fix
   touches more than 3 component files" trigger. When a token fix would exceed
   10 consumers, that is the documented stop-and-ask, not a reason to fan out.
