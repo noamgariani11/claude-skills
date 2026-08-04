@@ -415,6 +415,18 @@ AskUserQuestion:
 Populate each preview field with the **actual content** from the draft, not placeholders — the
 user is making the go/no-go call based on what they read there.
 
+**Record the answer immediately, whichever it is.** The moment the user picks an option you know
+something the ledger does not, and this is the only moment you will reliably know it:
+
+| Answer | Record straight away |
+|---|---|
+| Submit via H1 API (and it succeeded) | `outcomes.py record … --state submitted` |
+| I'll paste it manually | `outcomes.py record … --state submitted` |
+| Edit first | nothing yet — you are still in Phase 2 |
+
+Deferring this to "after the program replies" is exactly how 18 finished reports in this repo
+ended up with no recorded outcome at all. Record `submitted` now; update to the verdict later.
+
 **If "Submit via H1 API":** call `h1_submit_report` from `mcp/hackerone-mcp/server.py` with:
 - `team_handle` — the program slug (e.g. `banco_plata`)
 - `title` — the `## Title` line body (strip the `## Title` header)
@@ -474,6 +486,28 @@ python3 ~/.claude/skills/h1-report/tools/report_learn.py log \
 ```
 It appends the row and prints the Phase-6 gate checklist. (Mode C, or later: record the verdict
 with `report_learn.py outcome --title "<substr>" --set resolved|duplicate|n-a|... [--bounty N]`.)
+
+**1b. Always — record the same fact in the repo's outcome ledger.** `report-log.jsonl` teaches
+*this skill* how to write. `output/targets/<p>/outcomes.jsonl` teaches *the toolkit* what to
+hunt: `triage_leads.py`, `host_scorer.py` and the `pick-program` rubric read it through
+`outcomes.py load_weights`, and read nothing else. Writing only the skill's log leaves lead
+scoring exactly as uninformed as it was before the report existed.
+
+```bash
+python3 research/tools/outcomes.py record --program <slug> \
+  --report reports/<file>.md --class "<vuln class>" --platform hackerone|bugcrowd \
+  --state drafted|submitted|duplicate|informative|resolved|withdrawn [--bounty N]
+```
+
+State meanings that matter here:
+- `drafted` — written, not filed. Honest, and it is what the ledger counts against you.
+- `submitted` — the user actually filed it (set this at the submission gate, not later).
+- `withdrawn` — **you** killed it before filing, because re-verification collapsed the claim.
+  Use it. It is not a failure to log; it is the only way the ledger can distinguish "our
+  pipeline produced a false positive" from "the program didn't value this."
+
+Before ending any run, `python3 research/tools/outcomes.py pending --strict` must exit 0.
+A non-zero exit means a report exists on disk that the scoring will never learn from.
 
 **2. Always — leave LESSONS.md sharper than you found it. "Something learned" every run means
 at minimum ONE of:**

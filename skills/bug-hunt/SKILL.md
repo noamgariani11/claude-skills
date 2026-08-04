@@ -1093,6 +1093,20 @@ research/tools/report_from_lead.py --program <p> --lead output/targets/<p>/leads
 research/tools/redact.py output/targets/<p>/reports/draft-<ts>.md --in-place   # strip PII/secrets
 ```
 
+**Always go through `report_from_lead.py`, and never hand-write a report file straight into
+`reports/`.** That tool opens the row in `outcomes.jsonl` that makes the finding visible to
+`triage_leads.py`, `host_scorer.py` and `pick-program`. Reports written around it are invisible
+to every scoring path in the repo — that is exactly how this workspace accumulated ten finalized
+`FINAL-*.md` reports that no tool in the toolkit knew existed.
+
+If you rename or finalize a draft, record the new filename too, and record `withdrawn` (not
+silence) when re-verification kills a finding:
+```bash
+research/tools/outcomes.py record --program <p> --report reports/<new-name>.md \
+  --class "<class>" --state drafted|withdrawn --notes "<why>"
+research/tools/outcomes.py pending --strict --program <p>   # must exit 0 before Phase 6
+```
+
 **BugCrowd report format (if PLATFORM=BC).** BugCrowd does not require a CVSS vector — use **P1–P5 priority** instead. The report anatomy is the same 9 sections, but:
 - **Severity** field → P1/P2/P3/P4/P5 priority label (map: Critical→P1, High→P2, Medium→P3, Low→P4, Info→P5).
 - **Weakness** → use the **VRT (Vulnerability Rating Taxonomy)** category path (e.g. `server_security.injection.sql`) instead of CWE. CWE mapping is encouraged as a supplement.
