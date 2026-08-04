@@ -47,6 +47,7 @@
     }
   }
   *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-padding-block: 16px 80px; }
   body {
     margin: 0;
     background: var(--paper);
@@ -66,6 +67,7 @@
   .lede { font-size: 20px; max-width: 56ch; }
 
   a { color: var(--accent); }
+  p a { text-decoration: underline; text-underline-offset: 0.14em; }
   a:hover { text-decoration-thickness: 2px; }
   a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
     outline: 2px solid var(--accent);
@@ -159,6 +161,49 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
   }
+
+  /* C29: the CORRECT hover-reveal patterns, which must not be reported as
+     touch-unreachable. Three distinct escape hatches, because the exclusion
+     has to recognise all of them:
+       1. hover PLUS focus-within — keyboard and tap both open it
+       2. a hover effect that only recolours; it hides nothing
+       3. content already inside a <details>, reachable by tapping summary
+     A check that cannot tell these from a hover-only dropdown would flag
+     every well-built menu on the page. */
+  .disclosure { position: relative; }
+  .disclosure .panel { display: none; position: absolute; background: var(--surface); padding: 8px; }
+  .disclosure:hover .panel,
+  .disclosure:focus-within .panel { display: block; }
+  .rowline .rowtool { opacity: 0.55; }
+  .rowline:hover .rowtool { opacity: 1; }
+  /* C36/C37: a hover state that IS a state. The fill is a visible step away
+     from the row's own backdrop, and it has horizontal padding to sit in, so
+     the band has margins instead of stopping at the first glyph. Neither
+     hover check may fire on this. */
+  .catrow { display: block; max-width: 520px; padding: 14px 16px; text-decoration: none; }
+  .catrow:hover { background-color: #e4e8ee; }
+  /* C38: a border hover that actually moves the border colour. */
+  .bordrow { display: block; max-width: 520px; padding: 14px 16px; border: 1px solid var(--rule); text-decoration: none; }
+  .bordrow:hover { border-color: var(--ink); }
+  /* C39: the correct construction for a rule-separated row. The RULE is on the
+     list item and the TINT is on the link inside it, separated by margin, so
+     the hairline survives the hover and the band has air above and below. */
+  .catitem { border-top: 1px solid var(--rule); list-style: none; }
+  .catitem > a { display: block; margin: 6px 0; padding: 14px 16px; border-radius: 8px; text-decoration: none; }
+  .catitem > a:hover { background-color: #e4e8ee; }
+  /* C30: color-scheme declared, so the browser's own chrome (scrollbars, the
+     <select> popup, autofill, the caret) follows the theme instead of
+     staying stubbornly light. */
+  :root { color-scheme: light dark; }
+  /* C33: a scroll region that keeps its scrollbar. An UNSTYLED scrollbar is a
+     preference, not a defect, and the probe must not confuse the two. */
+  .scrollbox { height: 72px; width: 260px; overflow-y: auto; border: 1px solid var(--border); }
+
+  /* C61 support: a real three-column comparison collapses on a phone, the way
+     correct code does. Without this the clean fixture would raise a genuine
+     horizontal-overflow candidate at 390px -- the fixture has to be right. */
+  .trio { display:grid; grid-template-columns:1fr 1fr 1fr; gap:24px; }
+  @media (max-width: 700px) { .trio { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -172,6 +217,21 @@
 </nav>
 
 <main id="main" class="wrap">
+  <!-- C54: A position:fixed transparent header over a dark hero. The header's ancestor chain is <body> (paper), but the text is painted over the near-black hero, where white-at-0.75 measures 11.19:1. Resolving the backdrop by DOM walk alone reports 1.03:1 and invents a critical WCAG failure on every dark-hero page. -->
+  <!-- Geometry note: the real defect is a FIXED header, but a fixed bar inside a
+       fixture appended to a long page floats over the viewport top rather than
+       over its own panel, which tests nothing. `absolute` reproduces the exact
+       condition that matters and is viewport-independent: an out-of-flow bar
+       whose whole ancestor chain is transparent, painted over an opaque dark
+       SIBLING. That is the composition the DOM walk cannot see. -->
+  <div style="position:relative;height:180px">
+    <section style="position:absolute;inset:0;background:#04070d"></section>
+    <div style="position:absolute;top:0;left:0;right:0;background:transparent;padding:16px 20px;display:flex;flex-wrap:wrap;gap:24px;align-items:center">
+      <a href="#" style="color:#fdfdfc;font-size:15px;line-height:44px;display:inline-block">Engineering</a>
+      <span style="color:#fdfdfc;font-size:13px">HARDWARE &amp; INSTRUMENTATION</span>
+    </div>
+  </div>
+
   <h1>Accounts payable</h1>
   <p class="lede">Eleven invoices are past their agreed terms. Approving one releases
     payment on the next banking day.</p>
@@ -200,21 +260,31 @@
     </table>
   </div>
 
+  <!-- C63: W3C H63 permits <th> alone for a small, simple table with one
+       obvious header direction. `scope` is excellent explicit markup, but a
+       sufficient technique is not a universal conformance requirement. -->
+  <table class="small-simple-table">
+    <tr><th>Quarter</th><th>Review state</th></tr>
+    <tr><td>Q1</td><td>Closed</td></tr>
+    <tr><td>Q2</td><td>Open</td></tr>
+  </table>
+
   <div class="cols">
     <section class="panel panel--raised">
       <h3>Approve a payment</h3>
       <form>
         <div class="field">
           <label for="invoice">Invoice number</label>
-          <input id="invoice" name="invoice" type="text" value="KM-4471">
+          <input id="invoice" name="invoice" type="text" value="KM-4471" autocomplete="off">
           <p class="field-hint">Found on the vendor’s statement, top right.</p>
         </div>
         <div class="field">
           <label for="amount">Amount released</label>
           <input id="amount" name="amount" type="text" inputmode="decimal" value="4,180.00">
         </div>
-        <button type="button" class="primary">Release payment</button>
+        <button id="release-payment" type="button" class="primary" aria-label="Release payment and return to ledger">Release payment</button>
         <button type="button" disabled>Void invoice</button>
+        <p id="payment-status" role="status" aria-live="polite"></p>
       </form>
     </section>
 
@@ -236,10 +306,151 @@
     </section>
   </div>
 
+  <!-- C29: correct hover-reveal patterns (see the rules in <style>) -->
+  <nav class="disclosure" aria-label="Reports">
+    <button type="button" aria-expanded="false" aria-controls="rep-panel">Reports</button>
+    <div class="panel" id="rep-panel"><a href="#main">Monthly close</a></div>
+  </nav>
+  <p class="rowline">302 Elm St <span class="rowtool"><a href="#main">Open</a></span></p>
+
+  <!-- C36/C37: a correctly designed row hover. Perceptible fill, padding for
+       it to sit in. Both hover checks must stay silent. -->
+  <a class="catrow" href="#main">Weekly service</a>
+  <a class="bordrow" href="#main">Chemical balancing</a>
+  <ul style="padding:0;margin:0;max-width:520px">
+    <li class="catitem"><a href="#main">Leak detection</a></li>
+    <li class="catitem"><a href="#main">Green pool recovery</a></li>
+  </ul>
+
+  <!-- C31: "01" as DATA, not as ornament. A lone padded number in a cell is a
+       unit number, a version, a jersey. Docking a page for it would be exactly
+       the confident wrongness this rig exists to prevent. -->
+  <p class="small">Unit <span>01</span> of Building A.</p>
+
+  <!-- C32: a native select, left native on purpose. It wins on mobile and with
+       assistive tech, it shares the field height and border, and it keeps its
+       own chevron. Correct engineering, not a finding. -->
+  <p><label for="unit-status">Status</label>
+     <select id="unit-status"><option>Occupied</option><option>Vacant</option></select></p>
+
+  <!-- C33: scrollable, and it says so -->
+  <div class="scrollbox"><p style="height:300px; margin:0">Scrolls, and shows it.</p></div>
+
+  <!-- C34: `title` that only repeats the element's own visible text is
+       redundant markup, not a tooltip carrying information nothing else does. -->
+  <p><a href="#main" title="Open ledger">Open ledger</a></p>
+
   <h2>Ledger note</h2>
   <p>Retainage is withheld at 10% until substantial completion is certified by
     the architect. It appears on the vendor statement as a credit, not as an
     unpaid balance, which is why the two documents disagree by design.</p>
+
+  <!-- C39: genuine typographic and mathematical marks in prose - a multiplication sign, a real ellipsis and a plus-minus - are typography, not the glyph-standing-in-for-an-icon tell. Docking a page for setting maths correctly is how a slop detector gets muted. -->
+  <p class="small">Unit mix 2 × 1BR at 780 sqft ±15, reconciled quarterly… see the vendor statement for the retainage split.</p>
+
+
+  <!-- C41: A skip link must appear on :focus, not :focus-visible - it exists only for keyboard users and focus-visible heuristics can suppress it. A lone plain :focus rule is therefore correct, not a missing focus-visible. -->
+  <a class="skip" href="#main" style="position:absolute;left:-9999px">Skip to content</a><style>.skip:focus{position:static;outline:2px solid #a78bfa}</style>
+
+  <!-- C42: A hover that steps a border from a 40%-alpha wash to the same hue at full strength IS a visible change. Comparing declared tokens (both var(--color-warn)) without resolving the alpha modifier reports it as inert. -->
+  <a href="#x" style="border:1px solid rgba(232,179,57,0.4);padding:13px 6px;transition:border-color .12s" onmouseover="this.style.borderColor=&quot;rgb(232,179,57)&quot;">finchai</a>
+
+  <!-- C43: An ellipsis-truncated row: the fill has 16px of inset on both sides. Measuring the untruncated Range rect of clipped text reports the ink as overflowing the band when it is visibly inside it. -->
+  <ul style="width:318px"><li><a href="#z" style="display:block;padding:14px 16px"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Production JavaScript source map exposed on the CDN edge nodes</span></a></li></ul>
+
+  <!-- C44: Text over a system-coloured backdrop under forced-colors stays visible; the probe simply cannot resolve a composited backdrop for it and skips it. A drop in MEASURABLE nodes is not a drop in visible ones - verified by diffing rendered text nodes, 445 before and 445 after. -->
+  <div style="background:var(--paper);color:var(--ink)"><p>Still visible under forced colours.</p></div>
+
+  <!-- C45: A 10%-alpha status wash spanning wide rows is not accent dominance. probe.js marks a grid cell for any fill with alpha>0.05 without weighting by alpha, so a barely-there tint is charged the same as a solid accent fill. -->
+  <div style="background:rgba(232,179,57,0.1);padding:8px">scope: 20 in / 2 out</div><div style="background:rgba(94,200,242,0.1);padding:8px">10 leads</div>
+
+  <!-- C46: A disabled state expressed as a conditional class rather than a ':disabled' CSS rule is still a designed disabled state. The launcher's disabled button is dashed and unfilled precisely so armed vs disarmed is not a subtle read. -->
+  <div style="background:var(--ink);padding:12px"><button disabled style="border:1px dashed var(--muted);background:transparent;color:var(--paper);cursor:not-allowed;padding:6px 12px">Start hunt</button></div>
+
+  <!-- C47: A full-height LEFT SIDEBAR is sticky but consumes no vertical space. The short-viewport chrome threshold must measure vertical occupancy, not the height of any sticky box. -->
+  <aside style="position:sticky;top:0;height:100vh;width:120px;float:left">nav</aside><div style="margin-left:120px">content
+  <!-- C48: A scrollable nav (overflow-y:auto) whose items are below the fold is NOT content loss under SC 1.4.4, which permits scrolling in one dimension. -->
+  <nav style="height:120px;overflow-y:auto" aria-label="Scrollable section nav"><a href="#" style="display:block;min-height:44px;padding:12px 8px">One</a><a href="#" style="display:block;min-height:44px;padding:12px 8px">Two</a><a href="#" style="display:block;min-height:44px;padding:12px 8px">Three</a><a href="#" style="display:block;min-height:44px;padding:12px 8px">Four</a><a href="#" style="display:block;min-height:44px;padding:12px 8px">Five</a><a href="#" style="display:block;min-height:44px;padding:12px 8px">Six</a></nav>
+
+  <!-- C49: A redirect stub legitimately has no h1. Probe canonical URLs; the h1 check must not run against a document that only redirects. -->
+  <p>Redirecting…</p>
+
+  <!-- C50: flex-shrink-0, flex-grow and bg-gradient-to-l are DEPRECATED ALIASES in Tailwind 4.3.x and still emit correct CSS. They are not dead classes and must not be reported as such. -->
+  <div class="flex-shrink-0 flex-grow bg-gradient-to-l">aliased but working</div>
+
+  <!-- C51: An input WRAPPED in a label element is correctly named; only a bare input with nothing but a placeholder is unnamed. -->
+  <label>Search<input type="search" placeholder="Search by name" autocomplete="off"></label>
+
+  <!-- C52: overflow:hidden with text-overflow:ellipsis is the correct way to truncate; it is not clipping. -->
+  <div style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">dev@example.com</div>
+
+  <!-- C53: On a narrow viewport a single full-width primary action legitimately occupies a large pixel share. The accent-share threshold is about a page drowned in colour, so it must be judged at the design viewport, not at 320-390px where one correct button dominates by arithmetic. -->
+  <div style="max-width:320px"><button style="width:100%;padding:14px;background:var(--accent);color:var(--accent-ink);border:0">Save assessment</button><p>One primary action, correctly emphasised.</p></div>
+
+
+  <!-- C55: Text on a position:fixed bar is correct code. The contrast walk must resolve the fixed element's own background rather than recording the backdrop as 'inherited' and emitting a ~1.0 ratio that contradicts the fg/bg pair it recorded. -->
+  <div style="position:fixed;bottom:0;left:0;right:0;background:var(--paper);padding:8px"><a href="#" style="color:var(--accent);display:inline-block;min-height:44px;padding:12px">Work Orders</a></div>
+
+  <!-- C56: A skip link is the recommended WCAG 2.4.1 technique: sr-only at rest, revealed on focus. Tailwind's focus:not-sr-only pattern keeps the px-4/py-2 padding utilities applied while sr-only is active, so the border box measures 32x16 with a 1x1 content box and a zero-area clip. It paints nothing and is not a target until focused, so it must not raise a 2.5.8 target-size candidate. -->
+  <a href="#main" style="position:absolute;width:1px;height:1px;padding:8px 16px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border-width:0;background:#1d4ed8;color:#fdfdfc">Skip to main content</a>
+
+  <!-- C57: An element that paints its OWN opaque background is never in doubt about what its text sits on, whatever is behind the box. When an app shell is wrapped in one position:fixed div, every descendant is 'out of flow' by ancestor, and hit-testing past the element's own background reported a primary button as white-on-white (1:1) when it measures 6.70:1. -->
+  <div style="position:fixed;top:1200px;right:0;width:190px"><div style="background:var(--paper);padding:12px"><span style="display:inline-flex;align-items:center;min-height:44px;background:var(--accent);color:var(--accent-ink);padding:0 16px;border-radius:8px;font-weight:500">New content</span></div></div>
+
+  <!-- C65-C67: the new deterministic checks must leave valid constructs
+       alone: visible label contained in a longer accessible name, a valid
+       nested BCP-47 tag, and a complete autocomplete token sequence. -->
+  <p lang="fr-CA">Montant vérifié.</p>
+  <p><label for="clean-email">Email address</label><input id="clean-email" type="email" autocomplete="section-account work email"></p>
+
+  <!-- C70-C72: ACT-calibrated applicability. A known primary language remains
+       usable when the trailing subtags are not strict RFC 5646; hidden,
+       disabled and empty autocomplete declarations are inapplicable; and an
+       invalid language owner with no inherited human-language content is not
+       a 3.1.2 target. -->
+  <p lang="en-US-GB">Known English primary with a non-strict region sequence.</p>
+  <label style="display:none">Hidden value<input autocomplete="badname"></label>
+  <label>Disabled value<input disabled autocomplete="badname"></label>
+  <label>Empty metadata<input autocomplete=" "></label>
+  <div class="language-owner" lang="invalid"><span lang="en">All meaningful text declares its own language.</span></div>
+
+  <!-- Runner integration cases: a behaviorally correct live announcement and APG-style
+       horizontal tablist for the runner's configured journey contracts. -->
+  <div id="ledger-tabs" role="tablist" aria-label="Invoice views">
+    <button type="button" role="tab" aria-selected="true" tabindex="0">Open</button>
+    <button type="button" role="tab" aria-selected="false" tabindex="-1">Approved</button>
+  </div>
+  <script>
+    document.getElementById('release-payment').addEventListener('click', function () {
+      document.getElementById('payment-status').textContent = 'Payment released successfully';
+    });
+    document.getElementById('ledger-tabs').addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+      var tabs = Array.from(this.querySelectorAll('[role=tab]'));
+      var current = tabs.indexOf(document.activeElement);
+      var next = (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      tabs.forEach(function (tab, index) {
+        tab.tabIndex = index === next ? 0 : -1;
+        tab.setAttribute('aria-selected', index === next ? 'true' : 'false');
+      });
+      tabs[next].focus(); event.preventDefault();
+    });
+  </script>
+
+
+  <!-- C59: A position:fixed action button overlaps body text at some scroll position by definition, at every breakpoint. That is the pattern, not a defect. Dock only when it covers a control (this one stands down over the contact form via IntersectionObserver). -->
+  <p style="width:100%;max-width:600px">A paragraph of body copy that the fixed action button will pass over as the reader scrolls.</p><a href="tel:+15550000000" style="position:fixed;right:24px;bottom:24px;z-index:40;display:flex;align-items:center;gap:8px;border-radius:999px;background:var(--accent);color:var(--accent-ink);padding:14px 24px">Call us</a>
+
+  <!-- C60: One tracking value applied to exactly one role at every one of its call sites is a decision, not drift, even when it overrides a scale default. Drift is many values for one role. -->
+  <p class="page-title" style="font-size:41.5px;letter-spacing:-0.025em">A page title</p><p class="page-title" style="font-size:41.5px;letter-spacing:-0.025em">Another page title</p><p class="page-title" style="font-size:41.5px;letter-spacing:-0.025em">A third page title</p>
+
+  <!-- C61: Three columns is not the slop tell; three INTERCHANGEABLE cards of icon, two-word heading and one line of category filler is. Three genuinely different priced options, each with its own action, is a comparison, and columns are the honest layout for one. Docking here pushes a product to disguise real content as prose. -->
+  <div class="trio">
+    <div><svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg><h3>24-Hour Rapid Response</h3><p>From $129</p><p>Plus a $75 same-day priority fee, waived for weekly members.</p><a href="/request/rapid">Request this</a></div>
+    <div><svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg><h3>Post-Storm Cleanup</h3><p>From $195</p><p>Final price scales with debris load and water condition.</p><a href="/request/storm">Request this</a></div>
+    <div><svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg><h3>Priority Equipment Check</h3><p>From $95</p><p>Applied toward any follow-up service we schedule.</p><a href="/request/equipment">Request this</a></div>
+  </div>
+</div>
 </main>
 
 <footer class="wrap">

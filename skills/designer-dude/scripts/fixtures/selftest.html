@@ -61,6 +61,42 @@
   .z1{position:relative;z-index:9999}.z2{position:relative;z-index:5000}
   .z3{position:relative;z-index:3000}.z4{position:relative;z-index:777}
   .z5{position:relative;z-index:42}.z6{position:relative;z-index:7}
+  /* D27: content reachable ONLY by hovering. On a coarse pointer the menu
+     never opens and the row action never appears, so both are unreachable —
+     the most common way a desktop-designed UI silently loses function on a
+     phone. The row action holds a real <button>, which is what makes it a
+     2.1.1 failure rather than a cosmetic one. */
+  .hovermenu{position:relative}
+  .hovermenu .drawer{display:none;position:absolute;background:#eee;padding:6px}
+  .hovermenu:hover .drawer{display:block}
+  .rowitem .rowaction{opacity:0}
+  .rowitem:hover .rowaction{opacity:1}
+  .catalogue{list-style:none;padding:0}
+  .catalogue .idx{font-size:14px;margin-right:12px}
+  /* D37/D38: the hover states that are not states */
+  .deadhover{background:#eceef1;padding:0}
+  .deadrow{display:block;width:520px;padding:14px 16px}
+  .deadrow:hover{background-color:#eceef1}
+  .tightrow{display:block;width:520px;padding:14px 0}
+  .tightrow:hover{background-color:#d3dae4}
+  /* D39: a hover that changes hue at the SAME lightness. Something happens,
+     but it vanishes in greyscale and for a colour vision deficiency. */
+  .huerow{display:block;width:520px;padding:14px 16px;background:#ece9e2}
+  .huerow:hover{background-color:#e5eaf1}
+  /* D40: a hover that re-declares the border colour it already has */
+  .deadborder{display:block;width:520px;padding:14px 16px;border:1px solid #cfd3d8}
+  .deadborder:hover{border-color:#cfd3d8}
+  /* D41: the hover fill and the row separator on the same box, so the rule
+     vanishes under the tint and the band starts where the row above ended.
+     D42: a wide row whose fill leaves the glyphs 2px of air top and bottom. */
+  .rulerow{display:block;width:520px;padding:14px 16px;border-top:1px solid #d7dade}
+  .rulerow:hover{background-color:#e3e8ee}
+  .squashrow{display:block;width:520px;padding:2px 16px}
+  .squashrow:hover{background-color:#e3e8ee}
+  /* D47: keyboard focus is moved into view and then completely hidden behind
+     author-created fixed content. This is the behavioral SC 2.4.11 case. */
+  .covered-focus{position:fixed;left:12px;top:12px;width:140px;height:40px;z-index:100}
+  .focus-cover{position:fixed;left:8px;top:8px;width:150px;height:50px;z-index:101;background:#fff}
 </style>
 </head>
 <body>
@@ -103,6 +139,14 @@
 <!-- D20: icon-only button with no accessible name -->
 <button class="r6"><svg width="16" height="16"><rect width="16" height="16" fill="#333"/></svg></button>
 
+<!-- D47-D50: behavioral/name/language/input-purpose failures added as
+     isolated contracts rather than inferred aesthetic heuristics. -->
+<button class="covered-focus">Covered action</button><div class="focus-cover">Blocking layer</div>
+<button aria-label="Delete invoice">Remove invoice</button>
+<span lang="not_a_language">Invalid language metadata</span>
+<span lang="zz-ZZ">Unknown primary language metadata</span>
+<label for="bad-purpose">Work email</label><input id="bad-purpose" type="email" autocomplete="email work">
+
 <!-- D21: duplicate ids -->
 <div id="dupe"></div><div id="dupe"></div>
 
@@ -126,9 +170,130 @@
 <!-- D25: a data table with no scope, no caption, numbers left-aligned -->
 <table class="r8">
   <tr><th>Property</th><th>Rent</th><th>Status</th></tr>
-  <tr><td>101 Main St</td><td>$1,250</td><td>Occupied</td></tr>
-  <tr><td>202 Oak Ave</td><td>$2,400</td><td>Vacant</td></tr>
+  <tr><th>101 Main St</th><td>$1,250</td><td>Occupied</td></tr>
+  <tr><th>202 Oak Ave</th><td>$2,400</td><td>Vacant</td></tr>
 </table>
+
+<!-- D27: hover-only content (see the .hovermenu / .rowitem rules above) -->
+<nav class="hovermenu"><button>Reports</button>
+  <div class="drawer"><a href="/monthly">Monthly close</a></div></nav>
+<nav><a href="#billing">Billing</a></nav>
+<div class="rowitem">302 Elm St <span class="rowaction"><button>Archive</button></span></div>
+
+<!-- D28: decorative zero-padded step numbers as section ornament -->
+<div class="steps">
+  <div><span style="font-size:14px">01</span><h3>Connect</h3></div>
+  <div><span style="font-size:14px">02</span><h3>Configure</h3></div>
+  <div><span style="font-size:14px">03</span><h3>Collect</h3></div>
+</div>
+
+<!-- D36: the SAME ornament in the shape that shipped -- one padded numeral per
+     list row, so every numeral has a different grandparent. The detector keyed
+     on grandparent identity read this as six unrelated lone numbers. -->
+<ul class="catalogue">
+  <li><a href="#main"><span class="idx">01</span><span>Weekly service</span></a></li>
+  <li><a href="#main"><span class="idx">02</span><span>Chemical balancing</span></a></li>
+  <li><a href="#main"><span class="idx">03</span><span>Leak detection</span></a></li>
+</ul>
+
+<!-- D37: a hover fill painted the colour the row already is. The rule exists,
+     rule-coverage counts it, and nothing happens on hover.
+     D38: a wide row that paints a hover fill with no horizontal padding, so
+     the band stops dead at the first glyph. -->
+<div class="deadhover">
+  <a href="#main" class="deadrow">Hover me: nothing changes</a>
+  <a href="#main" class="tightrow">Hover me: the fill hugs the text</a>
+  <a href="#main" class="huerow">Hover me: hue moves, lightness does not</a>
+  <a href="#main" class="deadborder">Hover me: the border is already that colour</a>
+  <a href="#main" class="rulerow">Hover me: the tint eats the rule above</a>
+  <a href="#main" class="squashrow">Hover me: the fill is squashed onto the text</a>
+</div>
+
+<!-- D29/D30: em-dash density and the LLM sentence frames -->
+<p style="max-width:60ch">Our platform isn't just a tool, but a partner — one built
+for teams — and in today's fast-paced world that matters — because speed compounds —
+and compounding is what separates the leaders from the rest.</p>
+
+<!-- D31: a native title tooltip carrying information nothing else carries -->
+<button type="button" title="Archives the property and hides it from every list"
+        style="padding:10px 14px; cursor:pointer">Archive</button>
+
+<!-- D43: prose link distinguished only by a low-contrast colour. It has no
+     persistent underline and no hover/focus cue, so WCAG 1.4.1 fails even
+     though the link text itself clears 1.4.3 against the page. -->
+<p class="ok">Read the <a href="#terms" style="color:#5f6770;text-decoration:none">payment terms</a>
+  before releasing this invoice to the vendor’s bank account.</p>
+
+<!-- D44/D45: copied component wiring that still paints but no longer exposes a
+     valid relationship or state contract to assistive technology. -->
+<button aria-controls="missing-invoice-panel">Show invoice filters</button>
+<button aria-labelledby="missing-visible-label">Unnamed destructive action</button>
+<div role="tab" tabindex="0">Overdue</div>
+
+<!-- D32: a scroll region with its scrollbar suppressed -->
+<div style="height:60px; overflow-y:auto; scrollbar-width:none; width:240px">
+  <p style="height:400px; margin:0">Long region whose only scroll affordance was removed.</p>
+</div>
+
+<!-- D33: a select stripped of its chevron with nothing put back -->
+<div><select aria-label="Status" style="appearance:none; -webkit-appearance:none; padding:8px">
+  <option>Occupied</option><option>Vacant</option></select></div>
+
+<!-- Runner contracts: these controls are deliberately behaviorally correct so
+     the runner can prove that it observes a real announcement and APG key
+     transition while the rest of this fixture continues to exercise defects. -->
+<button id="fixture-save" type="button">Save fixture</button>
+<p id="fixture-status" role="status" aria-live="polite"></p>
+<div id="fixture-tabs" role="tablist" aria-label="Fixture views">
+  <button type="button" role="tab" aria-selected="true" tabindex="0">Open</button>
+  <button type="button" role="tab" aria-selected="false" tabindex="-1">Closed</button>
+</div>
+<button id="fixture-dialog-open" type="button">Open fixture dialog</button>
+<dialog id="fixture-dialog" aria-label="Fixture confirmation">
+  <button type="button" id="fixture-dialog-first">Confirm</button>
+  <button type="button">Cancel</button>
+</dialog>
+<label for="fixture-password">Password</label>
+<input id="fixture-password" type="password" autocomplete="current-password">
+<div class="fixture-drag" draggable="true">Drag invoice</div>
+<button type="button" id="fixture-move">Move invoice without dragging</button>
+<label for="fixture-first-email">Email step one</label><input id="fixture-first-email" type="email" autocomplete="off">
+<button id="fixture-next" type="button">Continue</button>
+<label for="fixture-confirm-email">Email step two</label><input id="fixture-confirm-email" type="email" autocomplete="off">
+<script>
+  document.getElementById('fixture-save').addEventListener('click', function () {
+    document.getElementById('fixture-status').textContent = 'Fixture saved successfully';
+  });
+  document.getElementById('fixture-tabs').addEventListener('keydown', function (event) {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    var tabs = Array.from(this.querySelectorAll('[role=tab]'));
+    var current = tabs.indexOf(document.activeElement);
+    var next = (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+    tabs.forEach(function (tab, index) {
+      tab.tabIndex = index === next ? 0 : -1;
+      tab.setAttribute('aria-selected', index === next ? 'true' : 'false');
+    });
+    tabs[next].focus(); event.preventDefault();
+  });
+  document.getElementById('fixture-dialog-open').addEventListener('click', function () {
+    document.getElementById('fixture-dialog').showModal();
+    document.getElementById('fixture-dialog-first').focus();
+  });
+  document.getElementById('fixture-dialog').addEventListener('keydown', function (event) {
+    if (event.key !== 'Tab') return;
+    var controls = Array.from(this.querySelectorAll('button:not([disabled])'));
+    if (!event.shiftKey && document.activeElement === controls[controls.length - 1]) {
+      controls[0].focus(); event.preventDefault();
+    } else if (event.shiftKey && document.activeElement === controls[0]) {
+      controls[controls.length - 1].focus(); event.preventDefault();
+    }
+  });
+  document.getElementById('fixture-next').addEventListener('click', function () {
+    document.getElementById('fixture-confirm-email').value = document.getElementById('fixture-first-email').value;
+  });
+</script>
+
+<style>@media (prefers-color-scheme: dark){ body{background:#111214;color:#e7e6e3} }</style>
 
 <footer class="centred muted odd">© 2026 Fixture. It's got straight quotes too.</footer>
 </body>
