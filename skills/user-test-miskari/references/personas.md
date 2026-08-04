@@ -65,9 +65,20 @@ Eight domain-expert personas (A–H) representing the real paying customers of M
 
 **Most common failure mode today:** Evidence files disorganized in Google Drive with no version control. Missed upload deadlines because the tracking spreadsheet wasn't synced.
 
-**GOAL for testing:** "Triage the protest opportunity scores for all properties, open the highest-opportunity protest, verify the equity comps look credible (class, sqft, $/sqft), and confirm the protest deadline is correct."
+**GOAL for testing:** "Triage the protest opportunity scores for all properties, open the highest-opportunity protest, confirm the protest deadline is correct, and re-derive the savings/levy math by hand."
 
-**Success criteria:** Triage list loads sorted by opportunity score, protest detail shows comps with class + sqft + $/sqft, deadline shown matches Texas rule (May 15 or 30 days from notice date, whichever is later).
+**Success criteria:** Triage list loads sorted by opportunity score, deadline shown matches that property's county rule (TX: later of May 15 or notice+30d), and the savings figures re-derive exactly from the visible inputs.
+
+> **GOAL NOTE — the comps wall (read this before fielding Marcus).** His card *wants* to verify equity
+> comps, and for 8 consecutive runs the run duly sent him at them and duly recorded that he couldn't see
+> them — because comps / income-approach / hearing-packet are **operator-only BY DESIGN** (a standing
+> `suppressed` entry in `known-issues.json`). That is not a test result; it is a decision, re-discovered
+> at persona cost, that then dragged his completion to Partial and pinned the verdict at `maybe`.
+>
+> So the GOAL above **deliberately omits the comps step**. The gap has not been hidden — it lives in the
+> Expert Feature Gaps table, where a product decision belongs, and it is where it has always belonged.
+> If the gating ever changes, restore the comps step and Marcus's Conditional→Trusted move becomes the
+> headline of that run. Until then: test what a paying customer can actually reach.
 
 ---
 
@@ -268,6 +279,26 @@ Eight domain-expert personas (A–H) representing the real paying customers of M
 **GOAL for testing:** "Review the application pipeline and move one applicant forward, check occupancy and which leases expire in the next 180 days, and generate a read-only share link for a property to send to a lender — confirming it's genuinely read-only and expires."
 
 **Success criteria:** Application pipeline shows accurate per-applicant status, occupancy distinguishes leased vs. occupied (or clearly states which it is), expiration list excludes already-renewed leases, share link is read-only + expiring + discloses both.
+
+---
+
+## Data lanes — mandatory when personas run in parallel
+
+Phase 2B fields personas **concurrently against one shared org**. Their *findings* are isolated (separate
+agent subprocesses, no shared context); their *data* is not. When Sandra marks a bill paid while James is
+reconciling that same bill, each sees a reality the other created — and the resulting phantom finding is
+irreproducible and looks exactly like a product bug. Two prior runs left cross-persona residue
+(a bill marked paid, a work order reassigned) that had to be cleaned up afterwards.
+
+Assign a **mutation lane** per persona before fielding, and state it in the agent brief:
+
+- Each persona may **mutate only their assigned property** (and its leases / bills / work orders).
+- Each persona may **read everything** — cross-surface reconciliation is the point, and reads are safe.
+- **Portfolio-level mutations** (share links, org settings, billing, seed-wide actions) belong to exactly
+  **one** named persona per run.
+- The adversarial agent (2D) mutates **only its own tracked plants**, and cleans up after each.
+
+Any finding whose reproduction crosses a lane boundary is **suspect** — re-check it serially before filing.
 
 ---
 

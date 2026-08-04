@@ -33,13 +33,19 @@ Load specialized references from `references/` on demand. Do not read all at onc
 
 | When you need | Load |
 |---|---|
-| All eight persona cards (A–H) + diversity rules + focus routing | `references/personas.md` |
+| All eight persona cards (A–H) + diversity rules + focus routing + data lanes | `references/personas.md` |
 | Critical workflow protocols + domain accuracy checks | `references/workflows.md` |
 | Domain trust signals, competitor comparisons, professional skepticism triggers | `references/domain-trust.md` |
-| Score calibration, evidence rules, confidence tagging, cognitive load | `/home/drago/.claude/skills/user-test/references/scoring-and-evidence.md` |
-| Chain of Thought format, PULSE | `/home/drago/.claude/skills/user-test/references/chain-of-thought.md` |
-| Report template, in-chat summary, engineering action items | `/home/drago/.claude/skills/user-test/references/report-template.md` |
-| Browser commands (Playwright / `browse` skill), baseline schema | `/home/drago/.claude/skills/user-test/references/interaction-protocols.md` |
+| Environment + harness facts (ports, login, Playwright gotchas, DB access) | `references/harness.md` |
+| Planted-defect calibration (measuring the FALSE-NEGATIVE rate) | `references/calibration.md` |
+| Score calibration, evidence rules, confidence tagging, cognitive load | `references/scoring-and-evidence.md` |
+| Chain of Thought format, PULSE | `references/chain-of-thought.md` |
+| Report template, in-chat summary, engineering action items | `references/report-template.md` |
+
+**These references are VENDORED (owned by this skill), not borrowed.** Earlier versions of this
+skill loaded scoring / CoT / report-template by absolute path out of `/user-test`'s directory, so an
+unrelated edit to that skill silently changed this one's behavior and score calibration mid-trend.
+The copies here are this skill's own. Do not re-point them at `/user-test`.
 
 ---
 
@@ -56,17 +62,11 @@ The persona's domain expertise is the point. A 15-year commercial property manag
 - A clear, reproducible verdict: "would a professional pay for this?" with defined criteria
 - Findings prioritized by customer impact, not technical severity
 
-Operating principles:
+Framing unique to this skill (the full rule list lives once, at the end, under **Operating Principles** — do not restate it here):
 - **Professional skepticism is the baseline.** These users spot a wrong cap rate, stale comps, or a missing protest deadline immediately. Trust is harder to earn from a professional than from a consumer.
-- **Domain accuracy > aesthetic polish.** A pixel-perfect UI with wrong NOI loses. An unremarkable UI with accurate, labeled, timely data wins.
 - **Every finding maps to a customer impact.** Not "button is hard to find" but "a property manager would miss their protest deadline because this isn't visible."
-- **Feature gaps are findings too.** When an expert says "I expected to be able to do X here" — that's a product gap, as important as any bug.
-- **Competitor pressure is constant.** Every persona has a mental benchmark — AppFolio, Buildium, Yardi Breeze, or their own Excel model. "Better than my spreadsheet" is the minimum bar.
+- **Competitor pressure is constant.** Every persona has a mental benchmark — AppFolio, Buildium, Yardi Breeze, or their own Excel model.
 - **Workflow continuity matters.** Real estate workflows span days or weeks. A tool that breaks mid-flow or loses state is worse than no tool.
-- **Show your sources.** Professionals need provenance. "As of DCAD 2025 roll" is credible. An unlabeled number is suspicious.
-- **The phone call test.** If it takes less effort to make a phone call than to find the answer in Miskari, Miskari lost.
-- **Improvements should be rapid and high-value.** The report's customer-impact table is the primary engineering deliverable — make it specific enough to act on immediately.
-- **Multi-tenant is non-negotiable.** Any cross-org data exposure is Critical, always.
 
 ---
 
@@ -134,22 +134,32 @@ Multiple runs have each re-derived these the hard way. Do them up front — a co
    ```
    If `true`, note it in the baseline as the residual deployment risk and make the Phase 2D aggregation-leak sweep mandatory (it is anyway). If it flips to `false`, record that the NOBYPASSRLS switch finally shipped — that is a defense-in-depth win worth calling out.
 
-3. **Harness bootstrap — the three committed scripts (do NOT rebuild from scratch).** The Playwright harness lives in the repo at `scripts/mblib.cjs`, `scripts/mbcapture.cjs`, `scripts/mbprobe.cjs`. Prior runs wasted time re-deriving this because it used to be an ephemeral scratchpad harness; it is now committed and stable. Use it as-is:
-   - **`mblib.cjs`** — core lib. Exports `launch()`, `newContext(browser, {viewport, noAuth})`, `brandCheck(page)` (throws on impostor markers, returns true on "miskari" — the per-agent double-confirm), `login(email, password)`, plus `BASE`/`AUTH`/`PW`. It resolves `playwright-core@1.61.1` from the pnpm store, launches the cached Chromium (`~/.cache/ms-playwright/chromium-1228`) with the WSL sysroot (`~/.cache/miskari-browser-sysroot/.../x86_64-linux-gnu`) on `LD_LIBRARY_PATH`, defaults `MB_BASE=:3002`, and defaults `MB_AUTH` under `~/.cache` (survives `/compact` wiping `/tmp`). CLI: `node scripts/mblib.cjs login [email] [password]`.
-   - **`mbcapture.cjs`** — `node scripts/mbcapture.cjs <outdir> <route…>`: per-route innerText + console errors/warnings + failed requests + ≥400 responses + screenshot, writes `_summary.json`. Uses `waitUntil:domcontentloaded` (see lesson below).
-   - **`mbprobe.cjs`** — `node scripts/mbprobe.cjs <route…>`: HTTP status / redirect / body-hint sweep for the foreign-ID 404 sweep and token surfaces.
-   - Export the confirmed URL: `export MB_BASE="http://localhost:<verified-port>"` (from 0.2) and optionally `export MB_AUTH="$HOME/.cache/miskari-user-test/auth-state.json"`.
-   - Login is a server action against Neon and is **slow (~15–30s, not 2s)**. `login()` already polls until the URL leaves `/login` before saving `storageState` — do not shorten its wait.
-   - If Chromium libs are missing (fresh box): `apt-get download` + `dpkg-deb -x` libnss3/libnspr4/libasound2t64 into `~/.cache/miskari-browser-sysroot` (no passwordless sudo in this WSL env). The sysroot usually already exists.
+3. **Harness bootstrap — the committed scripts (do NOT rebuild from scratch).** The harness is committed at **`tools/user-test-harness/`** (NOT `scripts/` — `.cjs` there breaks `pnpm lint`, which is why prior runs kept exiling it to a scratchpad and losing it). Full detail in `references/harness.md`. Use it as-is:
 
-4. **Recurring harness lessons — codified so you don't re-derive them (each cost a prior run real time).**
-   - **Never `waitUntil:networkidle`.** Streaming routes (all token surfaces, `/tax/preflight`) never go idle → false 30–45s "hangs" that get misfiled as reliability bugs (a persona false-flagged `/tax/preflight` this way). Use `domcontentloaded` + a fixed post-load wait (both scripts do). A route is only "slow" if a WARM second hit still exceeds a few seconds.
-   - **Warm every route before a stress test.** A cold concurrent round shows non-200s that are Turbopack compile timeouts, NOT 500s. Always warm first and log the actual status codes; don't file cold-compile non-200s as reliability Criticals.
-   - **Don't read seed reality from the DB.** Neon direct-`pg`/CLI queries hang from bash in this env, and the user has declined a standalone DB seedcheck script mid-run. Derive seed facts from the app UI surfaces + prior `baseline.json`, not a raw DB script.
-   - **Persona-agent liveness ≠ file mtime.** Agents block on slow `mbcapture` calls, so transcript-file mtime going idle does not mean the agent finished. Wait on a "final report" content marker in the agent's output, not mtime.
-   - **MCP Playwright may be unconnected** in a given session — the node harness above is the fallback and is always available.
+   ```bash
+   export MB_BASE="http://localhost:<verified-port>"   # from 0.2 - REQUIRED
+   pnpm ut:login                                        # ~15-30s vs Neon; do not shorten
+   ```
 
-5. **Adversarial-agent budget.** The Phase 2D agent has been killed mid-run by the account spend limit in 2 of 4 runs, leaving residue plants. Give it an explicit ordering so the highest-value work happens first even if it dies: **(a) aggregation-leak sweep (read-only) → (b) boundary/injection probes → (c) any write-based traps LAST, with cleanup guaranteed after each plant.**
+   | Script | What it does |
+   |---|---|
+   | `mblib.cjs` | Core lib: `launch`, `newContext`, `brandCheck`, `login`, `go`, `text`, `shot`, `selectCombobox` |
+   | `mbcapture.cjs` | `node … <outdir> <route…>` → per-route text + console + ≥400s + screenshot + `_summary.json` |
+   | `mbprobe.cjs` | `node … [--no-auth] <route…>` → fast HTTP status/redirect/body-hint sweep |
+   | `mbsweep.cjs` | **Deterministic** isolation + token tripwire. `pnpm ut:sweep` / `ut:sweep:full`. Exit 1 = anomaly |
+   | `validate-artifacts.mjs` | `pnpm ut:validate` → schema + self-consistency check on the run artifacts |
+
+4. **Run the deterministic sweep BEFORE spending any agent on it.** `pnpm ut:sweep` (or `ut:sweep:full` when Phase 0.65 says the blast radius moved) does the aggregation-leak reconciliation, the foreign-ID 404 sweep, the token fail-closed probe, and the cross-surface consistency checks **mechanically, in seconds, for zero tokens** — and, unlike an agent, it cannot be killed by a spend limit (which took the sweep down in 2 of 4 early runs). Paste its output into the 2D agent's brief as established fact; that agent's budget goes to interpreting anomalies and probing creative attack paths.
+
+5. **Recurring harness lessons — codified so you don't re-derive them (each cost a prior run real time).** These are summarized here and detailed in `references/harness.md`:
+   - **Never `waitUntil:networkidle`.** Streaming routes (all token surfaces, `/tax/preflight`) never go idle → false 30–45s "hangs" misfiled as reliability bugs. The committed `go()` uses `domcontentloaded`. A route is only "slow" if a WARM second hit still exceeds a few seconds.
+   - **Warm every route before a stress test.** A cold concurrent round shows non-200s that are Turbopack compile timeouts, NOT 500s. `mbsweep.cjs` warms first automatically.
+   - **Read seed reality from `/api/diagnostics/seed-check`, not the DB.** Neon direct-`pg`/CLI queries hang from bash in this env. The endpoint (requireOrg-gated, own-org counts only) gives you the fixture facts mechanically — see Phase 0.4.
+   - **`selectOption` cannot drive the app's `SelectInput`** (custom combobox + aria-hidden native `<select>`). Use `mb.selectCombobox()`. A select is only broken if a HUMAN click-through also fails.
+   - **Persona-agent liveness ≠ file mtime.** Agents block on slow `mbcapture` calls; idle mtime does not mean finished. Wait on a "final report" content marker.
+   - **MCP Playwright may be unconnected** in a given session — the node harness is the always-available fallback.
+
+6. **Adversarial-agent budget.** With the mechanical sweep now scripted (item 4), the Phase 2D agent starts from its results. Order its remaining work so the highest-value survives a spend-limit kill: **(a) interpret any sweep anomaly → (b) creative boundary/injection probes → (c) write-based traps LAST, with cleanup guaranteed after each plant.**
 
 ### 0.4 — Auth wall + seed data check
 
@@ -160,22 +170,22 @@ curl -s "$URL" 2>/dev/null | grep -Ei "sign[ -]?in|log[ -]?in|please authenticat
 
 Miskari is always auth-gated. Ask the user for credentials. The default dev seed is `dev@example.com` / `devpassword` (org: "dev") — confirm whether to use those or a production-like dataset.
 
-**Seed prerequisite gate (machine-checkable, per workflow).** For three of four runs, half the persona roster (James/reconciliation, Diane/residential renewal, comps) was un-fieldable because the base seed provisions no bank transactions, no near-term residential renewal, and an empty ParcelCache. Stop asking the user three fuzzy questions — query the DB and decide fielded/skipped per workflow mechanically.
+**Seed prerequisite gate — one HTTP call, no judgement.** For three of four runs, half the persona roster (James/reconciliation, Diane/residential renewal, comps) was un-fieldable because the base seed provisions no bank transactions, no near-term residential renewal, and an empty ParcelCache — and the run only discovered this *after* fielding the persona. Worse, fixture gaps got misfiled as product bugs (the occupancy tile-vs-suite contradiction is a `Lease.unitId=null` seed artifact).
 
-Run `pnpm seed:user-test` first (idempotent, additive, Dev-Org-only — provisions exactly the chronically-missing fixtures: a Plaid item + 6 bank txns, a residential lease expiring in 45d, 5 ParcelCache office comps, and Unit rows). Then evaluate each workflow's prerequisite:
+Run `pnpm seed:user-test` (idempotent, additive, Dev-Org-only), then ask the app:
 
-| Workflow | Prerequisite (query Dev Org) | If unmet |
-|---|---|---|
-| Protest / appeal | ≥1 property with an assessment whose appeal window is known | Skip — setup failure, not a product finding |
-| Onboarding | always fieldable (form-driven) | — |
-| Lease renewal (commercial) | ≥1 active lease `endDate ≤ 90d` | Skip renewal step, test lease detail only |
-| Lease renewal (residential) | ≥1 active lease on a residential property `endDate ≤ 90d` | Skip Diane's renewal goal |
-| Vendor radar | ≥1 contract with `endDate` set | Skip |
-| Reconciliation | ≥1 `bank_transaction` row (Plaid item present) | Skip James's reconciliation goal |
-| Maintenance dispatch | ≥1 work order or maintenance item | Skip |
-| Portfolio dashboard | always fieldable | — |
+```bash
+curl -s "$MB_BASE/api/diagnostics/seed-check" -H "Cookie: $(…session…)" | jq
+```
 
-After `seed:user-test` all rows above should be present. Record the fielded/skipped decision per workflow in the baseline (`workflows_unexercisable`) — the verdict math (Phase 4) EXCLUDES skipped-for-seed workflows so a setup gap never drags the professional verdict. Documents still require a real UI upload (a Document row without its R2 object 404s), so document-boundary probing stays code-level; note it, don't field a document persona against zero documents.
+It returns own-org `totals`, a `workflowPrereqs` boolean per workflow, an `unexercisable` list, and `warnings` naming each fixture invariant that is violated (leases with `unitId=null`, a `property.units` scalar disagreeing with its Unit rows, zero bank transactions, empty ParcelCache…). This endpoint exists *because* raw DB reads hang from bash here and a prior run's standalone DB script was declined mid-run — asking the app is the reliable path. It is `requireOrg`-gated and returns counts only, never another org's data.
+
+**Use its output directly:**
+- Copy `unexercisable` into the baseline's `workflows_unexercisable`. The Phase 4 verdict math EXCLUDES those workflows, so a fixture gap can never read as a product failure.
+- Treat every `warnings` entry as a **known fixture artifact**, not a product finding. If a persona reports a symptom that a warning explains (suite shows Vacant under "Occupied 1" ← `unitId=null`), file it as a seed issue with the product gap noted separately — do not let it consume a Critical slot.
+- Do NOT field a persona whose GOAL depends on an unexercisable workflow. Re-route them (Phase 1) instead of watching them fail on missing data.
+
+Documents still require a real UI upload (a Document row without its R2 object 404s), so document-boundary probing stays code-level.
 
 ### 0.5 — Route discovery + coverage clusters
 
@@ -199,16 +209,76 @@ Miskari is ~200 routes and growing — the six original workflows cover roughly 
 | **Billing/entitlements** (UNTESTED) | `/pricing`, `/settings/billing`, plan-gated features, the `readonly` fail-safe state | A — Sandra, F — James |
 | **Vendor/insurance/utilities** | `/contracts`, `/insurance`, `/utilities`, `/vendors` | A — Sandra |
 
-**Coverage rotation rule (mandatory in full mode):** read the baseline's `coverage_ledger` (routes visited in prior runs). **Every full run must include at least one cluster marked UNTESTED/UNDER-TESTED that has not been covered in the last 2 runs.** The external-token cluster is doubly important: it is both the highest-stakes adversarial surface (token guessing, expired-token behavior, cross-org leakage through a share) AND an unauthenticated first-impression surface — Phase 2D must probe it every run once any token exists in the seed.
+**Coverage rotation rule (mandatory in full mode) — now ROUTE-level, because the cluster backlog is exhausted.** `clusters_never_covered` is `[]`: every cluster has been fielded at least once, so cluster granularity has run out of signal. But only ~29 of ~200 routes have *ever* been visited, and the run-3 Critical hid in a **tab of an already-visited route** — "cluster covered" never meant "surface covered."
+
+So rotate on `coverage_ledger.route_last_seen` (route → run that last visited it). **Every full run must spend a meaningful share of its route budget on routes that are absent from `route_last_seen` entirely (never visited) or stalest by date.** A route absent from the map is maximally stale — that is the correct fail-safe, and it means the never-visited ~85% of the app outranks anything re-walked recently. Stamp every route this run touched back into the map at Phase 4; the validator enforces that `routes_visited` and `route_last_seen` agree.
+
+Clusters remain the *narrative* grouping (they tell you which persona is natural for a surface) and still carry the stakes ranking below. **Additionally, every full run must include at least one cluster marked UNTESTED/UNDER-TESTED that has not been covered in the last 2 runs.** The external-token cluster is doubly important: it is both the highest-stakes adversarial surface (token guessing, expired-token behavior, cross-org leakage through a share) AND an unauthenticated first-impression surface — Phase 2D must probe it every run once any token exists in the seed.
+
+**Budget-reallocation rule (the anti-redundancy payoff):** the more the Phase 0.65 change-delta classifies as `ASSUMED-HOLDS`, the MORE of this run's persona/route budget goes to never-covered and stale (>2 runs unvisited) clusters instead of re-walking already-confirmed surfaces. Concretely:
+- A route confirmed clean in the **last run** whose backing files did NOT change is NOT re-walked as primary persona work this run — it is at most a drive-by. Prefer a route from `clusters_never_covered` or the oldest entry in `routes_visited`.
+- On a **near-empty change-delta**, aim for the majority of freshly-visited routes to be ones not in the prior `routes_visited` list. The point of a low-change run is breadth into the untested, not depth into the re-confirmed.
+- Persona GOALs on low-change runs should target a never-fielded cluster (billing-entitlements, maintenance-dispatch/Priya, insurance/utilities) rather than repeating a workflow that completed cleanly last run. Rank the reallocation candidates by (a) never covered, then (b) longest since covered, then (c) highest stakes (token/billing/isolation-adjacent).
 
 ### 0.6 — Baseline check
 
 ```bash
-ls -t docs/reports/user-test-miskari-reports/baseline.json 2>/dev/null | head -1
-ls -t docs/reports/user-test-miskari-reports/learnings.md 2>/dev/null | head -1
+pnpm ut:validate    # schema + self-consistency check on last run's artifacts
 ```
 
-Read both if present. Apply the same baseline/suppression/recurring-pattern logic as `/user-test` (details in `/home/drago/.claude/skills/user-test/SKILL.md` Phase 0.7).
+Read `docs/reports/user-test-miskari-reports/baseline.json` + `learnings.md` + `known-issues.json`.
+
+**Validate before you trust.** `pnpm ut:validate` catches the class of defect the *tester itself* has shipped: the 2026-07-10-late-eve baseline asserted `clusters_never_covered: []` while its own `clusters_note` said "billing-entitlements (never fielded)" — a cross-surface contradiction, exactly what the personas are told to report as a bug. An instrument that contradicts itself invalidates its readings. If validation fails on the PRIOR baseline, fix the prior artifact first (the rotation and change-delta rules read from it), and note the correction in this run's report.
+
+Then apply the suppression / recurring-pattern logic (Phase 3 consolidation).
+
+**Read `learnings.md` as HISTORY only.** Durable environment and harness facts now live in `references/harness.md` (edited in place, not appended). `learnings.md` keeps a **rolling window of the last 5 runs** plus a permanent "structural" section — anything older gets summarized into one line and dropped. It reached 51 KB of interleaved protocol-lessons and run-narrative that every run re-read in full; that is budget spent re-learning what should already be encoded in the skill.
+
+### 0.65 — Change-delta since last run (the anti-redundancy gate)
+
+**Re-verify what moved; spot-check what didn't; spend the freed budget on the untested.** (Early runs re-ran every sweep in full each time even though isolation had held 7+ runs with no change to `db-org.ts`/`orgPrisma`/the loaders — budget that belonged on never-tested surface.)
+
+Compute the source-tree delta since the last run, then classify every standing check as `RE-VERIFY` (its code moved) or `ASSUMED-HOLDS` (unchanged — cheap spot-check only).
+
+```bash
+# The SHA the last run recorded (baseline.git_sha). Empty on first run.
+_LAST_SHA=$(python3 -c "import json,sys; print(json.load(open('docs/reports/user-test-miskari-reports/baseline.json')).get('git_sha',''))" 2>/dev/null)
+_NOW_SHA=$(git rev-parse HEAD)
+echo "last run SHA: ${_LAST_SHA:-<none>} ; now: $_NOW_SHA"
+
+# Union of (a) commits since the last run + (b) the current uncommitted tree
+# (user-test frequently runs against an uncommitted working tree carrying the fixes).
+{ [ -n "$_LAST_SHA" ] && git diff --name-only "$_LAST_SHA"..HEAD 2>/dev/null;
+  git diff --name-only HEAD 2>/dev/null;          # unstaged
+  git diff --name-only --cached 2>/dev/null; } | sort -u > /tmp/mb_changed_files.txt
+echo "changed since last run:"; cat /tmp/mb_changed_files.txt
+```
+
+- **First run (no `git_sha` in baseline), or `_LAST_SHA` no longer resolves (history rewritten):** treat EVERYTHING as `RE-VERIFY` — the full protocol, exactly as before. The anti-redundancy path only activates once there is a valid prior SHA to diff against.
+- **Changed-file set is empty (identical tree, e.g. a pure re-run):** every standing check is `ASSUMED-HOLDS`. Do the minimal spot-checks (below), skip the full sweeps, and put the ENTIRE persona budget into never/under-covered clusters per the rotation rule.
+- **Otherwise:** a standing check is `RE-VERIFY` iff any changed file matches its `backing_files` glob (recorded per protect entry in `known-issues.json` and per finding in `baseline.json`; see Phase 4). No match → `ASSUMED-HOLDS`.
+
+**Two backing-file globs are treated as blast-radius wildcards that force a FULL re-verify of the security sweeps regardless of the specific check:** any change under `src/lib/db-org.ts`, `src/lib/org-scope.ts`, `src/lib/db.ts`, `prisma/schema.prisma`, `prisma/migrations/**`, or any `*loader*`/`analytics-loader`/`*aggregat*` file → the Phase 2D aggregation-leak sweep is FULL. Any change under `src/app/**/[token]/**`, `src/lib/**token**`, `src/lib/**share**`, or `src/app/api/documents/request/**` → the token-surface probe is FULL. This keeps the "multi-tenant is non-negotiable" guarantee: the moment anything in the isolation blast radius moves, the full sweep runs.
+
+**Minimal spot-check (what `ASSUMED-HOLDS` still costs — a cheap tripwire, not a full sweep):**
+- Aggregation leak: hit **3** aggregate surfaces (`/reports?tab=analytics`, `/dashboard`, `/tax`) and reconcile their headline counts against own-org reality. If any is off → escalate that check to FULL immediately (a leak means the "unchanged" assumption was wrong). This is ~3 routes vs the full ~17.
+- Token surfaces: probe **1** guessed token on **1** route (`/portfolio-share/deadbeef`) must fail closed. If it leaks → FULL.
+- Protect list (Phase 2C item 5): for each `ASSUMED-HOLDS` protect item, do a single-surface visual confirm (its `how:` line, one property) rather than the full hand-derivation across every property.
+
+**Log the classification up front** so the run's shape is auditable:
+```
+CHANGE-DELTA: N files changed since <last-sha>. RE-VERIFY: [list of checks]. ASSUMED-HOLDS (spot-check only): [list]. Freed budget -> clusters: [which untested clusters get the reallocation].
+```
+
+Record the same in the baseline as `reverification_ledger` (Phase 4). If a spot-check tripwire fires, note it and escalate — an `ASSUMED-HOLDS` that turns out broken is itself a finding worth surfacing (it means a change elsewhere had a blast radius we under-scoped).
+
+### 0.68 — Calibration run (every 5th run, or on demand via `--calibrate`)
+
+**False positives are catalogued obsessively; false negatives were invisible.** Nothing else measures what the personas **miss** — so every persona-count, word-budget and prompt choice is otherwise made blind to its own detection rate. Fix it the way you'd test any detector: **plant known defects on a throwaway worktree and see if they're caught, blind.**
+
+**Full protocol in `references/calibration.md` — load it before running one.** The non-negotiables: never plant on the working branch and never merge a plant; verify every plant actually *renders* before fielding anyone (2 of 3 were duds once, which would have reported a false 0/3); at least one plant must sit on an **alternate code path** (stored value / override table / cache), which is where the only confirmed miss lived; a plant the mechanical sweep catches does not count as a persona catch; and a missed plant is a hole in the **method**, fixed in the skill immediately.
+
+Record `calibration` in the baseline: `{ run, planted, caught, catch_rate, by_tier, caught_by, missed, protocol_changes }`.
 
 ### 0.7 — Setup output
 
@@ -226,7 +296,9 @@ Load `references/personas.md`. It defines eight Miskari-specific personas (A–H
 
 ### Selection rules
 
-**Full mode (default):** Select 3 personas. Always include one from {Commercial PM (A), Tax Protest Specialist (B)}. Then pick the 2 remaining to satisfy the **coverage rotation rule** (Phase 0.5): at least one selected persona must own a cluster marked UNTESTED/UNDER-TESTED not covered in the last 2 runs (Priya/maintenance, Terrence/tenant-lifecycle, or Robert routed through deals/underwriting). Otherwise pick by which features the current diff/focus touches.
+**Full mode (default):** Select 3 personas. Always include one from {Commercial PM (A), Tax Protest Specialist (B)} — this persona still runs the 2A domain gate and the spot-check tripwires from Phase 0.65. Then pick the 2 remaining by the change-delta:
+- **If the change-delta (Phase 0.65) is small / mostly `ASSUMED-HOLDS`:** the 2 remaining personas should BOTH be routed into never-covered or stale clusters per the budget-reallocation rule (Phase 0.5) — do not spend them re-walking last run's clean surfaces. This is the whole point: a quiet run buys breadth into the untested.
+- **If the change-delta touches a specific surface:** pick the 2 remaining for the changed surface, still satisfying the coverage rotation rule (at least one persona owns a cluster untested in the last 2 runs — Priya/maintenance, Terrence/tenant-lifecycle, or Robert through deals/underwriting).
 
 **Diff mode (`--diff`):** Select 2 personas most relevant to the changed surface. If the diff touches `/tax` or `/protests`, always include B.
 
@@ -242,6 +314,39 @@ Load `references/personas.md`. It defines eight Miskari-specific personas (A–H
 
 For each selected persona, define a **concrete GOAL** with binary success criteria tied to the relevant workflow in `references/workflows.md`. Print each persona card header (name, role, goal, viewport) before Phase 2. Do NOT print their private biography.
 
+### GOAL recalibration — never send a persona at a wall you already decided to build
+
+Before fielding, check every GOAL step against `known-issues.json` → `suppressed`. **If a step is
+blocked by a by-design decision, rewrite the goal.** Marcus's card says "verify the equity comps look
+credible" — comps have been operator-only *by design* for 8 straight runs. Sending him at them again
+isn't testing, it's ritual: it burns his budget, guarantees Partial completion, and drags the verdict
+for a decision that was already made deliberately.
+
+Rewrite the goal to test **what a paying customer can actually reach**, and let the wall live in the
+Expert Feature Gaps table where it belongs (it stays visible — it just stops corrupting the verdict).
+Note the rewrite in the report: `GOAL adjusted: comps step removed (suppressed by-design, 8 runs) —
+replaced with income-approach input transparency.`
+
+### Data lanes — parallel personas must not corrupt each other's reality
+
+Phase 2B personas run in parallel **against one shared org**. Isolation of their *findings* is
+enforced; isolation of their *data* is not. Sandra marking a bill paid while James reconciles that
+same bill produces a phantom finding neither of them can reproduce — a contamination vector that
+looks exactly like a product bug.
+
+**Assign each persona a mutation lane before fielding** and state it in the agent brief:
+
+| Persona | May MUTATE | May READ |
+|---|---|---|
+| Persona 1 | property 1 + its leases/bills/WOs | everything |
+| Persona 2 | property 2 + its leases/bills/WOs | everything |
+| Persona 3 | property 3 + its leases/bills/WOs | everything |
+| Adversarial (2D) | its own plants only, cleaned up | everything |
+
+Portfolio-level mutations (share links, org settings, billing) belong to **exactly one** persona per
+run — name who. Any finding whose repro crosses a lane boundary is suspect: re-check it serially
+before filing.
+
 ---
 
 ## Phase 2A: Domain Expert First — Breadth + Gate
@@ -254,8 +359,8 @@ Run this persona as an **isolated Agent subprocess**. The agent receives only:
 - The GOAL with binary success criteria
 - The workflow protocol from `references/workflows.md` for their assigned flow
 - The domain skepticism triggers from `references/domain-trust.md`
-- The scoring rules from `/home/drago/.claude/skills/user-test/references/scoring-and-evidence.md`
-- The PULSE format from `/home/drago/.claude/skills/user-test/references/chain-of-thought.md`
+- The scoring rules from `references/scoring-and-evidence.md` (this skill's VENDORED copy)
+- The PULSE format from `references/chain-of-thought.md` (this skill's VENDORED copy)
 
 The agent must NOT be given findings from prior agents or any other run context. Isolation is mandatory — cross-persona contamination defeats the purpose.
 
@@ -322,14 +427,24 @@ Not a persona. A property-management-software QA engineer who knows the domain. 
 
 2. **Data freshness audit** — check every "as of" label on material data. Are comps dated? Are cap rates labeled with a roll year? Are utility rate comparisons dated? Flag any [UNLABELED] material number.
 
-3. **Cross-surface consistency** — does the same property show the same appraised value on the assessment list, the protest detail, and the cap-rate tab? Check at least 2 properties.
+3. **Cross-surface consistency — MECHANICAL, do not hand-walk it.** `pnpm ut:sweep` now runs `crossSurfaceChecks` from `sweep-config.json`: it extracts the same fact from every surface that renders it and asserts the set has exactly one value. Read its output; your job is only to *interpret* a `DISAGREE` and to **add a check for any material fact this run found rendered on 2+ surfaces**.
+
+   Two rules that are the whole reason this is mechanical now:
+   - **Enumerate surfaces from the ROUTE LIST, not from persona habit.** The 2026-07-17 calibration miss was a deadline checked on three agreeing surfaces and missed on the fourth (`/properties/[id]`, which renders a STORED "Authoritative" deadline via a *different* code path — `storedDeadline` short-circuits the derivation). Three surfaces agreeing is a sample, not consistency.
+   - **`INCONCLUSIVE` is a failure, not a pass.** A check matching <2 surfaces means the extractor rotted with the markup. Fix the regex or delete the check — a silently-green consistency check is worse than none, for exactly the reason an unobservable calibration plant is worse than none.
 
 4. **Protest/appeal deadline accuracy (per county, not universal).** Miskari is multi-jurisdiction now (`appraisal-counties.ts`, `appeal-window-overrides.ts`). For each seeded property, verify the deadline shown matches **that property's county rule**, not a hardcoded May 15:
    - Texas (Dallas/DCAD etc.): later of May 15 or 30 days after the notice date.
    - Non-TX counties (Clark NV, Alameda CA, …): use the county's own appeal-window rule from `/settings/appeal-windows` / `appeal-deadline-status.ts`. A wrong deadline on a property whose window is open is a Critical, same as TX.
    A May-15 date shown on a non-Texas property is a [WRONG] finding.
 
-5. **Regression re-verify (from the suppression registry).** Read `docs/reports/user-test-miskari-reports/known-issues.json`. For each entry in its `protect` list, actively re-assert the fix still holds (cross-org leak closed, later-of deadline rule, unified occupancy method, freshness stamps, protest optimistic-lock). A `protect` item that regressed is a P0 regression, reported as such. Do NOT re-file anything in the `suppressed` list as a fresh finding unless it is past its `ttl_until` (then re-confirm it).
+5. **Regression re-verify (from the suppression registry) — change-scoped per Phase 0.65.** Read `docs/reports/user-test-miskari-reports/known-issues.json`. Each `protect` entry carries a `backing_files` glob and (once Phase 5's rule has been applied to it) a `test` path. Verify in this order:
+   - **`test`-backed (the goal state)** — run the test. `pnpm test -- <path>`. Green = verified, permanently, for near-zero cost. This is the whole compounding mechanism: a fix guarded by a committed test never has to be re-bought with browser budget again. Add one cheap visual spot-check only if the test cannot see what the user sees (rendering, labels, layout).
+   - **`RE-VERIFY`** (no test yet AND backing files moved since last run, OR first run): actively re-assert the fix the FULL way — hand-derive the math across every affected property, run the concurrency probe, etc. A `protect` item whose backing files changed and then regressed is a P0 regression. **Then write the test** (Phase 5) so this is the last run that pays full price for it.
+   - **`ASSUMED-HOLDS`** (no test, backing files unchanged): the cheap single-surface confirm from the entry's `how:` line. Record as `assumed-holds (unchanged since <sha>)`. If the cheap confirm looks off, escalate to FULL immediately.
+   Do NOT re-file anything in the `suppressed` list as a fresh finding unless it is past its `ttl_until` (then re-confirm it). Report the split so it's clear what was **tested**, what was re-derived, and what was assumed.
+
+   **Report the test-coverage ratio of the protect list** (`N of M protect items are test-backed`). It should rise every run. If it is flat, the run failed to compound — it re-bought its own verification instead of buying it once.
 
 6. **Feature gap audit** — combine the feature gap lists from all personas, de-duplicate, and add any gaps the technical reviewer notices from the route list that no persona visited.
 
@@ -346,11 +461,21 @@ DOMAIN TECH [category]: [finding] | Evidence: [screenshot/console/measurement] |
 
 Not a persona — a skeptical professional who has been burned by two PM tools with garbage data. They are actively looking for reasons NOT to trust Miskari.
 
-Run as an isolated Agent subprocess. This agent's job is to find holes in the data, not the UX. Order the probes per Phase 0.35 §5 (read-only sweep FIRST, writes LAST) so the highest-value work survives a spend-limit kill.
+Run as an isolated Agent subprocess. This agent's job is to find holes in the data, not the UX.
 
-**What they probe (in this order):**
-1. **Aggregation-leak sweep (standing item — run EVERY time, FIRST, read-only).** The run-3 Critical was an aggregation leak, not a detail-route leak — a `withOrg` read with no `organizationId` filter under a BYPASSRLS role. Detail-route sweeps do NOT catch it. Visit **every rollup/aggregate surface** — all `/reports` tabs (esp. `?tab=analytics`), `/dashboard`, `/tax/*`, `/search`, every `compare` page — and reconcile each rendered count/total against the org's real object counts. Any "N / 41"-style number where the org owns fewer is a Critical leak. Then sweep foreign detail IDs (from the current `learnings.md` foreign-ID list): each must 404.
-2. **External token-surface probe (standing item — run EVERY time once a token exists).** For each token route (`/portal/[token]`, `/share/[token]`, `/share/property/[token]`, `/portfolio-share/[token]`, `/r/[token]/*`, `/sign/[token]`, `/documents/request/[token]`): (a) does a malformed/guessed token fail closed (404/expired), not leak? (b) does an EXPIRED/revoked token still render data? (c) does the shared payload expose only the fields the owner configured — no other-org inference from URL params? (d) unauthenticated first-impression: is it a clean read-only view or does it leak mutation controls?
+**Items 1 and 2 are MECHANICAL — run them as a script, before and outside this agent** (see Phase 0.35 item 4). Judgement-free verification never belongs in an agent.
+
+```bash
+pnpm ut:sweep          # TRIPWIRE: 3 aggregate surfaces, 2 foreign IDs, 1 guessed token, cross-surface checks
+pnpm ut:sweep:full     # FULL: every aggregate surface, all foreign IDs, all token routes, all cross-surface checks
+```
+
+Phase 0.65's change-delta picks the mode: **FULL** if the isolation blast radius moved (`db-org.ts` / `org-scope.ts` / `db.ts` / `schema.prisma` / `migrations/**` / `*loader*` / `*aggregat*`) or the token/share code moved (`**/[token]/**`, `**token**`, `**share**`, `api/documents/request/**`), or on a first run; **TRIPWIRE** otherwise. `mbsweep.cjs` warms routes first (cold-compile non-200s are not findings), reconciles every rendered count against own-org ground truth from `/api/diagnostics/seed-check`, and **exits 1 on any anomaly**. A fired tripwire is itself a finding: it means the blast radius was under-scoped.
+
+Feed the sweep's output into this agent's brief as established fact. **The agent's remaining job, in this order** (highest value first, so a spend-limit kill loses the least):
+
+1. **Interpret any sweep anomaly** — the script says *what* looks wrong; the agent works out *why*, and whether it is a real leak or a fixture artifact.
+2. **The judgement-requiring parts of the token surfaces** the script cannot assert: does an EXPIRED/revoked token still render? Does the shared payload expose fields the owner never configured? Is the unauthenticated view a clean read-only first impression, or does it ship a mutation control that actually works?
 3. **Math manipulation** — edit a bill amount mid-flow, check if dashboard totals update immediately or show stale aggregates
 4. **Document boundary** — attempt to access a document URL from property A while authenticated as property B (guess a plausible UUID). Note: seed has 0 real documents, so this stays code-level until a doc is uploaded.
 5. **Implausible data injection** — enter an assessed value of $1 and $999,999,999; check the opportunity score / income approach handle boundary values gracefully (no NaN/crash/divide-by-zero)
@@ -371,13 +496,65 @@ CLEANUP STATUS: N/N verified deleted
 
 ## Phase 3: Report
 
-Load the report template from `/home/drago/.claude/skills/user-test/references/report-template.md`. Use the standard structure, then add these Miskari-specific sections.
+Load the report template from `references/report-template.md` (this skill's VENDORED copy). Use the standard structure, then add these Miskari-specific sections.
+
+**No availability finding ships without a SERIAL RE-PROBE (hard gate, validator-enforced).** Across five-plus runs the loudest "Critical" was infrastructure, not product: Neon pool exhaustion under 3 concurrent Playwright agents, Turbopack cold-compile 404 storms, stale `.next` state, dev-server port churn across co-hosted apps, memory SIGKILLs. Every one was eventually disproven — after burning real budget, and after at least one drove a false P0. Three concurrent browser agents are not production load.
+
+So before any finding mentioning 5xx / timeout / crash / "unavailable" / ECONNREFUSED / intermittent may be filed at **C or H**: restart the server, `rm -rf .next` if 404s are involved, wait for 2B's concurrent load to end, then re-probe the failing routes **serially on a warm server** (`mbprobe.cjs` — mechanical, seconds, no agent budget). Record the result in the finding's `serial_reprobe` field. If they return 200 serially, it is a load/compile artifact: file it as a DEPLOY.md hardening note, not a product Critical. `pnpm ut:validate` errors on a C/H availability claim with no `serial_reprobe`.
+
+(This does not mean pool exhaustion is uninteresting — "3 users can exhaust the pool" is a real hardening item. It means it is not a *product Critical*, and the distinction has cost this skill more budget than any other single mistake.)
 
 **Apply the suppression registry at consolidation (NOT inside persona agents — isolation must be preserved).** After collecting all findings, filter against `docs/reports/user-test-miskari-reports/known-issues.json`: drop any finding matching a `suppressed` entry that is still within its `ttl_until` (note it in a "Suppressed this run" line so it's auditable); keep and elevate any matching a `suppressed` entry past its TTL (re-confirm) or any `protect` item that regressed (P0). This keeps by-design decisions and known harness artifacts out of the fresh-bug list without hiding real regressions.
 
 ### Miskari-specific report sections
 
-**Insert after "Executive Summary":**
+**Insert immediately after "Executive Summary":**
+
+#### Verdict, Ceiling, and What's Blocking It
+
+A verdict alone cannot distinguish "the product is stuck" from "the *test* is stuck" — and it was partly the latter for six runs, because personas kept being sent at walls the product deliberately built. A KPI that cannot move no matter what gets fixed has stopped carrying information. So report three numbers, not one:
+
+| | Value | Meaning |
+|---|---|---|
+| **Verdict** | `would_pay` / `maybe` / `would_not_pay` | The matrix result for THIS run |
+| **Ceiling** | `would_pay` / `maybe` / `would_not_pay` | The BEST verdict achievable today, given the by-design decisions currently in `known-issues.suppressed` |
+| **Blockers** | list | The exact, minimal set of items standing between the verdict and `would_pay` |
+
+Compute the **ceiling** by re-running the verdict matrix with every open finding fixed but every
+`suppressed` by-design decision still in place. Then:
+
+- **Verdict `maybe`, ceiling `maybe`** → *the product decisions are the ceiling.* No amount of bug-fixing
+  reaches `would_pay`. Say so plainly, and name which decision (e.g. "comps/packet operator-only") is
+  capping it. This is a **product** conversation, not an engineering backlog.
+- **Verdict `maybe`, ceiling `would_pay`** → *fix these N findings and the verdict moves.* This is an
+  engineering conversation. List them.
+
+Those two situations currently read identically in the report. They demand opposite responses.
+
+Each blocker must name: the finding id, what it blocks, and what specifically would clear it.
+
+#### Score: Benchmark vs Exploration
+
+One blended composite confounds **product quality** with **test-plan choice**. The coverage-rotation
+rule (correctly) pushes each run into weak, never-tested clusters — so a run that does the *right*
+thing scores *lower* than one that re-walks polished surfaces. The 4.7 dip in run 6 was Marcus/James/Priya
+hitting under-built clusters, not a regression. The trend line the skill calls "the product's most
+important signal" was partly measuring which personas it happened to pick.
+
+Split it:
+
+- **Benchmark score** (cross-run comparable): a FIXED trio over the FIXED core workflows, scored the
+  same way every run. This is the trend line. Only this number goes in `trend[]` as `benchmark`.
+- **Exploration score** (per cluster): scored per newly-covered cluster, and compared **only against that
+  cluster's own history** — never against the benchmark. A first fielding of a weak cluster is *supposed*
+  to score low; that is the finding, not a regression.
+
+Report both. Never average them into one number again.
+
+| Score | This run | Prior | Δ |
+|---|---|---|---|
+| Benchmark (fixed core) | | | |
+| Exploration · [cluster] | | (first fielding / prior) | |
 
 #### Domain Trust Ratings
 
@@ -453,10 +630,47 @@ One paragraph per persona, written in their voice. If someone at their networkin
 
 ## Phase 4: Finish
 
-Same as `/user-test` Phase 4 (details in `/home/drago/.claude/skills/user-test/SKILL.md`), with these additions to `baseline.json`:
+**Self-contained — do NOT defer to `/user-test`'s Phase 4.** (It was deferred to for six months; an edit there silently changes this skill's finish protocol, and its schema disagrees with this one's — it writes a blended `composite`, which this skill deliberately replaced with the benchmark/exploration split.) The steps:
+
+1. **Compute the score trend** — benchmark vs prior benchmark, and each exploration score vs that cluster's own history. Never blend them. If the fixed trio was not fully fielded (the rotation rule may prevent it), write `benchmark_score: null` **with a `benchmark_note` explaining why**; the validator accepts an explained null and rejects an unexplained one.
+2. **Update `issue_history`** — a stable cross-run record keyed by a lowercased slug of the finding title. Match this run's findings against it: OPEN match → append this run, increment `age_in_runs`; FIXED match → **REGRESSION**, reopen and log loudly; SUPPRESSED match → leave unless re-verified; no match → new entry. Never delete an entry — regression detection needs the history.
+3. Write `baseline.json` (schema below), `known-issues.json`, and the report file.
+4. Append the run's block to `learnings.md` (rolling 5-run window; older entries get summarized to one line and moved to `learnings-archive.md`). Durable environment/harness facts go into `references/harness.md` **edited in place**, not appended to learnings.
+5. Run `pnpm ut:validate`. Fix any artifact it rejects — never bypass it.
+6. Print: the saved-report path, the full report, the in-chat summary and engineering action items (templates in `references/report-template.md`), then the status line.
+
+Additions to `baseline.json`:
 
 ```json
 {
+  "git_sha": "77ee16c3...",
+  "tree_dirty": true,
+  "professional_verdict": "maybe",
+  "verdict_ceiling": "maybe",
+  "verdict_blockers": [
+    { "id": "income-approach-comps-operator-only", "kind": "by_design", "blocks": "Marcus Full completion", "clears_when": "comps exposed to account holders (PRODUCT decision, not a bug)" },
+    { "id": "property_page_noi_missing_nonoperating_exclusion", "kind": "finding", "blocks": "domain trust -> Trusted", "clears_when": "property-page NOI reconciles with analytics NOI" }
+  ],
+  "benchmark_score": 6.0,
+  "benchmark_note": "Fixed trio (Marcus/Sandra/Robert) over the fixed core workflows - the only cross-run-comparable number.",
+  "exploration_scores": { "tenant-lifecycle": 5, "external-token": 8 },
+  "protect_test_coverage": { "test_backed": 3, "total": 8 },
+  "calibration": {
+    "last_run": "2026-07-11",
+    "planted": 3,
+    "caught": 2,
+    "catch_rate": 0.67,
+    "missed": ["freshness label stripped from assessed value - no persona re-checked provenance on /tax/assessments"]
+  },
+  "reverification_ledger": {
+    "changed_files_since_last_run": ["src/app/properties/[id]/page.tsx", "src/lib/deal-underwriting.ts"],
+    "re_verified": ["property-page-noi-excludes-nonoperating"],
+    "assumed_holds": ["cross-org-analytics-leak-closed", "protest-deadline-later-of-rule", "protest-optimistic-lock", "freshness-stamps-present"],
+    "aggregation_sweep": "tripwire (data layer unchanged since 77ee16c3; 3 surfaces own-only, 2/2 foreign 404)",
+    "token_probe": "tripwire (token layer unchanged; /portfolio-share/deadbeef fail-closed)",
+    "tripwires_fired": [],
+    "freed_budget_spent_on": ["billing-entitlements", "maintenance-dispatch"]
+  },
   "tax_season": true,
   "domain_trust": {
     "Sandra": "trusted | conditional | distrusted",
@@ -479,21 +693,72 @@ Same as `/user-test` Phase 4 (details in `/home/drago/.claude/skills/user-test/S
   "coverage_ledger": {
     "clusters_covered_this_run": ["tax-protest", "financials-dashboard", "maintenance-operations"],
     "clusters_never_covered": ["billing-entitlements"],
-    "routes_visited": ["/dashboard", "/reports", "/reconcile", "/work-orders"]
+    "routes_visited": ["/dashboard", "/reports", "/reconcile", "/work-orders"],
+    "route_last_seen": {
+      "/dashboard": "2026-07-19",
+      "/reports": "2026-07-19",
+      "/reconcile": "2026-07-19",
+      "/work-orders": "2026-07-19"
+    }
   },
   "trend": [
-    { "run": "2026-07-09", "composite": 5.3, "verdict": "maybe", "worst_domain_trust": "conditional" },
-    { "run": "2026-07-10", "composite": 5.7, "verdict": "maybe", "worst_domain_trust": "conditional" }
+    { "run": "2026-07-09", "benchmark": 5.3, "verdict": "maybe", "ceiling": "maybe", "worst_domain_trust": "conditional" },
+    { "run": "2026-07-10", "benchmark": 5.7, "verdict": "maybe", "ceiling": "maybe", "worst_domain_trust": "conditional" }
   ],
   "rolbypassrls": true,
-  "domain_gate_result": "clean | warning | failed",
-  "professional_verdict": "would_pay | maybe | would_not_pay"
+  "domain_gate_result": "clean | warning | failed"
 }
 ```
 
-**Coverage ledger** — record which clusters (Phase 0.5) were covered and which routes were visited, so the rotation rule can pick a never-covered cluster next run. `clusters_never_covered` is the backlog that keeps latent Criticals (like the run-3 analytics leak) from hiding in unvisited surface.
+Every entry in `new_findings_this_run` additionally carries **`age_in_runs`** and, once it hits 3, a **`disposition`** (see the escalation rule below).
 
-**Trend array** — append one entry per run `{ run, composite, verdict, worst_domain_trust }` so the arc (e.g. Marcus Distrusted → Conditional → Trusted) is computable from data, not re-read from prose. This is the product's most important signal.
+**Validate before you finish:**
+
+```bash
+pnpm ut:validate    # exits 1 on schema errors or self-contradiction
+```
+
+It fails the run on: a verdict better than its own ceiling; a ceiling below `would_pay` with no blockers named; a cluster listed as both covered and never-covered; a `clusters_note` that contradicts the structured field; a fired tripwire with no matching finding; a ≥3-run-old finding with no disposition; a `protect` entry with no `backing_files`. **Fix the artifact, do not bypass the validator** — a self-contradicting instrument invalidates its own readings.
+
+**`git_sha` + `tree_dirty` (REQUIRED — the anti-redundancy pivot).** Record `git rev-parse HEAD` at the end of every run, and whether the working tree was dirty. The NEXT run's Phase 0.65 diffs against this SHA to decide what moved. If you forget to write it, the next run has no choice but to re-verify everything in full — so this field is load-bearing.
+
+**`reverification_ledger` (REQUIRED).** The audit trail of what this run actually re-derived vs. assumed-held. `re_verified` = protect/finding items whose backing files changed and got the full treatment; `assumed_holds` = items spot-checked only because their code was untouched; `aggregation_sweep`/`token_probe` record `full` vs `tripwire` and the result; `tripwires_fired` lists any cheap spot-check that unexpectedly failed (each is itself a finding — an under-scoped blast radius); `freed_budget_spent_on` names the untested clusters the saved effort was redirected into. This ledger is how a reader confirms the run got *broader*, not just *shorter*.
+
+**`backing_files` on every finding (REQUIRED going forward).** Each entry in `new_findings_this_run` and each `protect`/`suppressed` entry in `known-issues.json` must carry a `backing_files` glob array naming the source files that back the check (e.g. `["src/app/properties/[id]/page.tsx"]`). This is what makes Phase 0.65 mechanical rather than a judgment call: next run, a finding is re-verified iff one of its `backing_files` is in the changed set. A finding with no `backing_files` is always re-verified (fail-safe) — so fill them in to earn the skip.
+
+**`route_last_seen` (REQUIRED).** Stamp every route this run visited with the run date. This is what the route-level rotation rule (Phase 0.5) reads, now that `clusters_never_covered` is empty and cluster granularity has stopped carrying signal. A route absent from the map has never been visited and is therefore maximally stale — it outranks everything else for next run's budget. The validator errors if it is missing, or if a route in `routes_visited` is absent from it.
+
+**`serial_reprobe` on every C/H availability finding (REQUIRED).** See the Phase 3 gate. The validator errors without it.
+
+**`added_run` + `test` on every NEW `protect` entry (REQUIRED — the ratchet).** A protect entry created this run must set `added_run` to the run date and carry the path of the test that guards it. The validator errors on a new entry with no test; pre-existing entries carry `added_run: "legacy"` and stay a warning-only retro-fit queue. The ratchet only turns one way.
+
+**Coverage ledger** — record which clusters (Phase 0.5) were covered and which routes were visited, so the rotation rule can pick a never-covered cluster next run. `clusters_never_covered` is the backlog that keeps latent Criticals (like the run-3 analytics leak) from hiding in unvisited surface. It must agree with `clusters_note` — the validator enforces this.
+
+### Findings must LEAVE this loop — the forced-disposition rule
+
+Findings currently live and die inside the skill's own artifacts, so they recur forever: the blank
+renewals market column is filed as "PRIOR finding, STILL PRESENT"; the equity-comps gap has been
+re-reported for **8 runs**; the NOBYPASSRLS role switch has been an "open deployment action" in the
+learnings prose for five. Re-reporting is not progress. A finding that survives three runs is telling
+you the loop has no exit.
+
+**Every finding carries `age_in_runs`, incremented at consolidation when it is still present.** At
+`age_in_runs >= 3` it requires an explicit **`disposition`** — there is no fourth run of limbo:
+
+| Disposition | Meaning | Where it goes |
+|---|---|---|
+| `fix_now` | It's a real bug and it gets fixed this run | Phase 5, with a test |
+| `product_decision` | It's intended behavior | Move to `known-issues.suppressed` with the rationale + TTL. It stops being a bug. |
+| `backlog` | Real, not now | **Write it into the repo's `TODOS.md`** with the finding id, then drop it from `new_findings_this_run` |
+| `deployment_action` | Not code (e.g. the NOBYPASSRLS role switch) | **Write it into `DEPLOY.md`** as a runbook item, then drop it |
+
+**Bridge to the repo's real backlog.** `CLAUDE.md` already mandates keeping `TODOS.md` current — the
+skill has been ignoring it and keeping a private, parallel backlog nobody works from. At Phase 4,
+every P1 feature gap and every `backlog` disposition gets written into `TODOS.md` (referencing the
+finding id so the next run can match it back). A finding that never reaches the backlog is a finding
+the team will never fix, no matter how many times the report repeats it.
+
+**Trend array** — append one entry per run `{ run, benchmark, verdict, ceiling, worst_domain_trust }` so the arc (e.g. Marcus Distrusted → Conditional → Trusted) is computable from data, not re-read from prose. This is the product's most important signal. **`benchmark`, never a blended composite** — the benchmark/exploration split (Phase 3) exists precisely so a run that correctly explores a weak cluster does not read as a regression. Exploration scores live in `exploration_scores`, compared only against their own cluster's history.
 
 **Verdict excludes unexercisable workflows.** When computing `professional_verdict`, "workflow completion" is taken over the workflows that were actually fieldable — a workflow listed in `workflows_unexercisable` (skipped for seed gaps per Phase 0.4) never counts as a Failed completion. A setup gap must not read as a product failure.
 
@@ -512,6 +777,16 @@ Same as `/user-test` Phase 4 (details in `/home/drago/.claude/skills/user-test/S
 "Conditional" requires: 1 [WRONG] or 2+ [SUSPICIOUS], but no wrong statutory dates and at least one persona completed their task.
 "Distrusted" is triggered by: 2+ [WRONG], OR any wrong statutory date, OR task Failed due to data error (not UX confusion).
 
+**Also compute `verdict_ceiling` — mechanically, the same way.** Re-run the matrix on a hypothetical
+world where **every open finding is fixed** but **every `suppressed` by-design decision still stands**.
+Whatever the matrix returns is the ceiling.
+
+The ceiling is what makes a six-run `maybe` legible. If the ceiling is also `maybe`, then no amount of
+bug-fixing moves the verdict and the report must say so out loud: *the product decisions are the cap.*
+If the ceiling is `would_pay`, the gap is a finite list of bugs — name them in `verdict_blockers`.
+
+Sanity rule (the validator enforces it): the verdict can never be **better** than its own ceiling.
+
 Save to `docs/reports/user-test-miskari-reports/baseline.json`. Append to `docs/reports/user-test-miskari-reports/learnings.md`.
 
 **Domain trust trend** — track in baseline across runs. If Marcus (Tax Specialist) improves from Distrusted → Conditional → Trusted over 3 runs, that is the most important trend in the product's history.
@@ -521,6 +796,39 @@ Save to `docs/reports/user-test-miskari-reports/baseline.json`. Append to `docs/
 ## Phase 5: Offer to Implement
 
 **Branch discipline — stay on one branch.** Do NOT open a new per-run branch or worktree for the fixes. Apply every implementation edit on the **current branch** (whatever is checked out when the run starts); if that happens to be `main`, apply directly on `main`. Override the default "branch off `main` before editing" behavior for this skill — a user-test run must not spawn `fix/user-test-findings-*` (or any other) branch. Leave the edits uncommitted for review unless the user explicitly asks to commit or push (per `CLAUDE.md`).
+
+### Every fix ships with a test. No exceptions. (The compounding rule.)
+
+This is what turns a test loop into a test loop that **gets better every run** instead of one that
+re-buys its own results.
+
+Today, verification is rented: the `protect` list is re-asserted each run by hand-derivation and live
+browsing — expensive, slow, and vulnerable to a spend-limit kill. But the codebase already contains the
+better pattern, discovered by this very skill: the `withorg-read-scope-coverage` meta-test **statically
+kills the entire cross-org aggregation-leak class forever.** That one test is worth more than all seven
+manual leak re-verifications combined, because it can never be skipped, never be forgotten, and costs
+nothing to run again.
+
+So, for every finding fixed in Phase 5:
+
+1. **Write the test that would have caught it.** Prefer the strongest form available:
+   - a **meta-test** that kills the whole class (best — a lint-like assertion over the source tree),
+   - a **unit test** on the pure function (`pnpm test`),
+   - an **integration/e2e** assertion when it only manifests end-to-end.
+2. **Record its path in the `protect` entry's `test` field** in `known-issues.json`.
+3. **Wire it into the repo's real gate.** There is no hosted CI — `.githooks/pre-push` IS the CI
+   (`pnpm gates`). A test that isn't in the gate is a test that will rot.
+
+Next run, that `protect` item is verified by **running the test**, not by re-browsing (Phase 2C item 5).
+The freed browser budget goes to never-covered clusters. That is the entire compounding loop, and it is
+why `protect_test_coverage` must rise every run — a flat ratio means the run re-bought what it should
+have bought once.
+
+Retro-fit candidates, in priority order (each is currently hand-re-derived every single run):
+`occupancy-unified-one-method`, `protest-deadline-later-of-rule`, `reconcile-feed-matcher-parity`,
+`noi-excludes-debt-service`, `property-page-noi-excludes-nonoperating`.
+
+### Conventions
 
 Same as `/user-test` Phase 5. When implementing Miskari findings, follow `CLAUDE.md` conventions:
 - Never use bare `prisma` against tenant tables — use `orgPrisma(orgId)`
@@ -547,3 +855,30 @@ Same as `/user-test` Phase 5. When implementing Miskari findings, follow `CLAUDE
 - **The professional verdict is computed, not felt.** The `professional_verdict` field uses the decision matrix. No manual override. If the matrix says `would_not_pay`, the report says so — even if individual UX elements were pleasant.
 - **"Better than spreadsheet" is the floor.** If verification takes longer than doing it manually, Miskari failed.
 - **Multi-tenant is non-negotiable.** Any cross-org data exposure is Critical, always, regardless of how it was found.
+
+### How this skill compounds (the meta-principles — these are what make it get better every run)
+
+- **Buy verification once.** Every fix ships with a test, and the `protect` entry records its path. Next
+  run verifies by *running the test*, not by re-browsing. `protect_test_coverage` must rise every run; a
+  flat ratio means the run re-bought what it should have bought once. **This is the single most important
+  rule in the file.**
+- **Never pay an LLM for a mechanical check.** Count reconciliation, 404 sweeps, token fail-closed probes
+  are deterministic — they belong in `mbsweep.cjs`, where they are free, instant, and immune to a
+  spend-limit kill. Agent budget is for judgement.
+- **Findings must leave the loop.** Fixed, or made an explicit product decision (`suppressed`), or written
+  into `TODOS.md` / `DEPLOY.md`. A finding re-reported for the 8th time is not diligence; it is a loop
+  with no exit. Enforced by the forced-disposition rule at `age_in_runs >= 3`.
+- **Measure what you MISS, not just what you get wrong.** False positives are catalogued; false negatives
+  were invisible. Planted-defect calibration (Phase 0.68) is the only thing that tells you what a "clean"
+  verdict was actually worth.
+- **Never send a persona at a wall you chose to build.** A GOAL step blocked by a `suppressed` by-design
+  decision produces a guaranteed Partial and a corrupted verdict, run after run. Rewrite the goal; the gap
+  lives in the feature-gap table.
+- **Report a ceiling with every verdict.** "Stuck at `maybe`" is ambiguous between "the product needs work"
+  and "the product decisions cap it here." Those demand opposite responses, so never let them print the same.
+- **The instrument gets audited too.** `pnpm ut:validate` before every write. The tester shipped the exact
+  cross-surface contradiction it hunts (`clusters_never_covered: []` vs a note saying otherwise); an
+  instrument that contradicts itself invalidates its own readings.
+- **Don't confound quality with coverage.** The benchmark score (fixed trio, fixed core) is the trend line.
+  Exploration scores are per-cluster. A run that correctly explores a weak, never-tested cluster must not
+  look like a regression.

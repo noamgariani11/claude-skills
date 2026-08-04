@@ -25,6 +25,24 @@ Ten core workflows that define whether Miskari is worth paying for. Workflows 1�
 
 ### Domain accuracy checks
 - Protest/appeal deadline: must exactly follow **that property's county rule**. Texas (Dallas/DCAD etc.): later of May 15 or 30 days after notice date. Non-TX counties (Clark NV, Alameda CA, …): the county's own appeal-window rule (`appeal-window-overrides.ts` / `/settings/appeal-windows`). A May-15 date shown on a non-Texas property is WRONG. Wrong by even one day = professional distrust
+
+  **Enumerate the deadline surfaces from the ROUTE LIST, not from habit — and check EVERY one.** The
+  2026-07-17 calibration planted a deadline one day wrong and the tax specialist **missed it**: he
+  verified the deadline on `/tax/assessments`, `/tax/opportunities` and `/protests/[id]` (all correct,
+  all agreeing), then opened `/properties/[id]` for other fields and never re-checked the deadline
+  rendered there. Three surfaces agreeing is not proof — **agreement across surfaces that share a code
+  path proves nothing about the surface that does not.**
+
+  The known deadline surfaces, and why they can disagree:
+
+  | Surface | Source |
+  |---|---|
+  | `/tax/assessments`, `/tax/opportunities`, `/protests/[id]` | the assessment's stored `protestDeadline` |
+  | **`/properties/[id]` appeal panel** | **`storedDeadline` short-circuits the derivation entirely** and renders an "Authoritative" badge — a *different* code path |
+  | `/settings/appeal-windows`, `/tax/preflight`, `/leases/[id]`, the iCal feed (`calendar-events.ts`) | derived via `appeal-process.ts` / `appeal-window-overrides.ts` |
+
+  A deadline check that has not compared the **stored** value against the **derived** value has not
+  actually tested the later-of rule.
 - Equity comps: each shows $/sqft with source date; median is labeled "§41.43(b)(3) median" or equivalent; property's $/sqft is highlighted vs. median
 - Cap rate inputs visible: the income approach panel must show the cap rate assumption, not just the final value. Professionals want to verify the input
 - Evidence enforcement: DCAD rules are PDF/JPG/XLS only, 8 MB max — the UI must display these limits and enforce them
