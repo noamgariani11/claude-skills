@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""contrast — WCAG 2.2 contrast maths for palettes and single pairs.
+"""contrast - WCAG 2.2 contrast maths for palettes and single pairs.
 
 The skill claims contrast is one of the three things that are never taste
 calls. That claim needs a calculator behind it, or it is just a firmer opinion.
@@ -23,6 +23,7 @@ compatible, and nobody should drop WCAG 2 conformance for it.
 """
 
 import argparse
+import io
 import json
 import math
 import re
@@ -478,12 +479,12 @@ def report_pair(fg_s, bg_s, large=False, ui=False, aaa=False, quiet=False):
         if fix:
             cand, L, newr, newC = fix
             L0, C0, h0 = rgb_to_oklch(*fg)
-            print(f"  needs {need}:1 for {label} — short by {need - r:.2f}")
+            print(f"  needs {need}:1 for {label} - short by {need - r:.2f}")
             print(f"  fix: {to_hex(cand)}  =  oklch({L:.3f} {newC:.3f} {h0:.1f})"
                   f"   -> {newr:.2f}:1")
             print(f"       (was oklch({L0:.3f} {C0:.3f} {h0:.1f}); hue held so the brand survives)")
         else:
-            print(f"  needs {need}:1 — unreachable by lightness/chroma alone. Change the pairing.")
+            print(f"  needs {need}:1 - unreachable by lightness/chroma alone. Change the pairing.")
     return ok
 
 
@@ -496,11 +497,32 @@ def main():
     ap.add_argument("--design-md", help="check every pairing in a DESIGN.md colors: block")
     ap.add_argument("--css", help="check every colour custom property in a stylesheet")
     ap.add_argument("--pairs", help='JSON: [["#fff","#000","body"], ...]')
+    ap.add_argument("--harmony", action="store_true",
+                    help="palette coherence (ramps, hue families, chroma, neutral "
+                         "temperature, accent budget) instead of contrast pairings")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
 
     if args.selftest:
         return selftest()
+
+    if args.harmony:
+        path = args.design_md or args.css
+        if not path:
+            print("--harmony needs --css <file> or --design-md <file>")
+            return 2
+        themes = ({"single": extract_design_md(path)} if args.design_md
+                  else extract_css(path))
+        themes = {k: v for k, v in themes.items() if v}
+        if not themes:
+            print(f"no colour tokens found in {path}")
+            return 2
+        rc = 0
+        for theme_name, colors in themes.items():
+            if len(themes) > 1:
+                print(f"\n{'=' * 76}\nTHEME: {theme_name}\n{'=' * 76}")
+            rc = harmony(colors, path, theme_name) or rc
+        return rc
 
     if args.pairs:
         with open(args.pairs) as fh:
@@ -530,7 +552,7 @@ def main():
             rc = check_palette(path, colors, theme_name) or rc
         if len(themes) == 1 and "dark" not in themes:
             print("\nOnly one theme found in this file. If the product has a dark mode defined")
-            print("elsewhere, check that file too — 'designed, not inverted' is a grading line.")
+            print("elsewhere, check that file too - 'designed, not inverted' is a grading line.")
         return rc
 
     if len(args.colors) == 2:
@@ -539,6 +561,249 @@ def main():
 
     ap.print_help()
     return 2
+
+
+# ---------------- palette coherence (the "do these belong together" half) ----
+
+SEMANTIC_HINTS = {
+    "accent": ("accent", "primary", "brand"),
+    "danger": ("danger", "error", "destructive", "critical", "negative"),
+    "success": ("success", "positive", "ok", "good"),
+    "warning": ("warn", "warning", "caution", "attention"),
+    "info": ("info", "note", "neutral-info"),
+}
+NEUTRAL_C_MAX = 0.035      # above this a token is reading as chromatic
+NEUTRAL_C_TINTED = 0.003   # below this it is pure grey, with no temperature
+HUE_CLUSTER_DEG = 25       # hues within this arc are the same family
+
+
+def _hue_gap(a, b):
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
+
+
+def _role_of(name):
+    n = base_name(name)
+    for role, hints in SEMANTIC_HINTS.items():
+        if any(h in n for h in hints):
+            return role
+    return None
+
+
+def harmony(colors, path, theme_name="single"):
+    """The five coherence tests from references/color.md, measured.
+
+    Every row is a CANDIDATE, exactly like the probe's output. A two-accent
+    palette can be correct and a wide neutral spread can be a deliberate
+    warm-surface / cool-text split. Confirm before any of this becomes a
+    finding.
+    """
+    toks = []
+    for name, raw in colors.items():
+        rgb = parse_color(raw)
+        if not rgb:
+            continue
+        L, C, h = rgb_to_oklch(*rgb)
+        toks.append({"name": base_name(name), "raw": raw, "rgb": rgb,
+                     "L": L, "C": C, "h": h})
+    if not toks:
+        print(f"no parseable colours in {path}")
+        return 2
+
+    verdicts = []
+
+    def say(level, headline, detail=""):
+        verdicts.append((level, headline, detail))
+
+    print(f"{len(toks)} colour tokens in {path}"
+          + (f"  [{theme_name}]" if theme_name != "single" else ""))
+
+    # --- Test: ramps -------------------------------------------------------
+    ramps = {}
+    for t in toks:
+        m = re.match(r"^(.*?)-(\d{2,3})$", t["name"])
+        if m:
+            ramps.setdefault(m.group(1), []).append((int(m.group(2)), t))
+    ramps = {k: sorted(v) for k, v in ramps.items() if len(v) >= 3}
+    if ramps:
+        print("\nRAMPS")
+        for base, steps in sorted(ramps.items()):
+            Ls = [t["L"] for _, t in steps]
+            monotonic = all(a > b for a, b in zip(Ls, Ls[1:])) or all(a < b for a, b in zip(Ls, Ls[1:]))
+            gaps = [abs(a - b) for a, b in zip(Ls, Ls[1:])]
+            evenness = (max(gaps) / min(gaps)) if gaps and min(gaps) > 1e-6 else 99
+            flat = [f"{steps[i][0]}/{steps[i+1][0]}" for i, g in enumerate(gaps) if g < 0.02]
+            Cs = [t["C"] for _, t in steps]
+            c_const = (max(Cs) - min(Cs)) < 0.01 and max(Cs) > 0.05
+            print(f"  {base:<16} {len(steps)} steps  "
+                  f"L {min(Ls):.2f}-{max(Ls):.2f}  "
+                  f"C {min(Cs):.3f}-{max(Cs):.3f}  "
+                  f"evenness {evenness:.1f}x  "
+                  f"{'monotonic' if monotonic else 'NOT MONOTONIC'}")
+            if not monotonic:
+                say("FAIL", f"ramp `{base}` is not monotonic in lightness",
+                    "a step is lighter than the one above it; the ramp has no usable order")
+            if flat:
+                say("FAIL", f"ramp `{base}` has near-duplicate steps: {', '.join(flat)}",
+                    "two steps nobody can tell apart is a step that should not exist")
+            elif evenness > 2.5:
+                say("CHECK", f"ramp `{base}` steps are uneven ({evenness:.1f}x)",
+                    "a cliff in the ramp means a needed value is missing")
+            if c_const:
+                say("CHECK", f"ramp `{base}` holds chroma constant across lightness",
+                    "peak chroma belongs in the middle; the ends should fall off or they clip")
+
+    # --- Test: hue families ------------------------------------------------
+    chromatic = [t for t in toks if t["C"] >= NEUTRAL_C_MAX]
+    families = []
+    for t in sorted(chromatic, key=lambda x: x["h"]):
+        for fam in families:
+            if _hue_gap(fam["hue"], t["h"]) <= HUE_CLUSTER_DEG:
+                fam["members"].append(t)
+                fam["hue"] = sum(m["h"] for m in fam["members"]) / len(fam["members"])
+                break
+        else:
+            families.append({"hue": t["h"], "members": [t]})
+    print(f"\nHUE FAMILIES ({len(families)} chromatic, {len(toks) - len(chromatic)} neutral)")
+    for fam in sorted(families, key=lambda f: -len(f["members"])):
+        names = ", ".join(sorted({m["name"] for m in fam["members"]}))
+        n = len(fam["members"])
+        print(f"  h~{fam['hue']:6.1f}  {n:>2} token{' ' if n == 1 else 's'}  {names[:70]}")
+    if len(families) > 6:
+        say("FAIL", f"{len(families)} distinct chromatic hue families",
+            "a coherent palette is one accent, one neutral, and the semantics that "
+            "carry meaning: 4 to 6. More than that usually means a default palette "
+            "was imported and used per component")
+    elif len(families) > 4:
+        say("CHECK", f"{len(families)} chromatic hue families",
+            "every family past accent + semantics needs a named job")
+
+    # --- Test: neutral temperature ----------------------------------------
+    tinted = [t for t in toks if NEUTRAL_C_TINTED < t["C"] < NEUTRAL_C_MAX]
+    pure = [t for t in toks if t["C"] <= NEUTRAL_C_TINTED]
+    print(f"\nNEUTRALS  {len(pure)} pure grey, {len(tinted)} tinted")
+    if tinted:
+        hues = sorted(t["h"] for t in tinted)
+        spread = max(_hue_gap(a, b) for a in hues for b in hues)
+        print(f"  tinted hue range {min(hues):.0f}-{max(hues):.0f} (spread {spread:.0f} deg)")
+        if spread > 40:
+            say("CHECK", f"neutral tints disagree by {spread:.0f} degrees of hue",
+                "warm surfaces against cool borders reads as dinginess nobody can name; "
+                "pick one temperature")
+    if pure and not tinted:
+        say("CHECK", "every neutral is pure grey (C=0)",
+            "safe, and it reads slightly cold and slightly cheap. A small chroma "
+            "pulled toward or deliberately away from the accent is the cheapest "
+            "upgrade in a palette")
+
+    # --- Test: chroma agreement + semantic separation ---------------------
+    roles = {}
+    for t in toks:
+        role = _role_of(t["name"])
+        if role and t["C"] >= NEUTRAL_C_MAX:
+            roles.setdefault(role, []).append(t)
+    if roles:
+        print("\nSEMANTIC ROLES")
+        for role, ts in sorted(roles.items()):
+            Cs = [t["C"] for t in ts]
+            hs = [t["h"] for t in ts]
+            print(f"  {role:<8} {len(ts):>2} token{' ' if len(ts) == 1 else 's'}  "
+                  f"h {min(hs):5.0f}-{max(hs):5.0f}  C {min(Cs):.3f}-{max(Cs):.3f}")
+        peak = {r: max(t["C"] for t in ts) for r, ts in roles.items()}
+        non_accent = {r: c for r, c in peak.items() if r != "accent"}
+        if len(non_accent) >= 2:
+            lo, hi = min(non_accent.values()), max(non_accent.values())
+            if lo > 0 and hi / lo > 2.0:
+                weakest = min(non_accent, key=non_accent.get)
+                say("CHECK", f"semantic chroma spread is {hi / lo:.1f}x "
+                            f"(`{weakest}` is the washed-out one)",
+                    "semantics that came from different places do not read as a set")
+        acc = roles.get("accent")
+        if acc:
+            acc_h = sum(t["h"] for t in acc) / len(acc)
+            for role, ts in roles.items():
+                if role == "accent":
+                    continue
+                gap = min(_hue_gap(acc_h, t["h"]) for t in ts)
+                if gap < HUE_CLUSTER_DEG:
+                    say("FAIL", f"`{role}` sits {gap:.0f} degrees from the accent",
+                        "the user cannot tell 'this is interactive' from 'this is a "
+                        f"{role} state'. Move the hue or carry the state with an icon "
+                        "and a word as well")
+        if "success" in roles and "danger" in roles:
+            s = max(roles["success"], key=lambda t: t["C"])
+            d = max(roles["danger"], key=lambda t: t["C"])
+            if abs(s["L"] - d["L"]) < 0.05:
+                say("CHECK", "success and danger differ in hue but not lightness "
+                             f"(L {s['L']:.2f} vs {d['L']:.2f})",
+                    "roughly 8% of men cannot separate them. Desaturate a screenshot "
+                    "and check the states are still readable")
+
+    # --- Test: gamut -------------------------------------------------------
+    # A declared oklch() that sRGB cannot hold gets clipped on the way to the
+    # screen, so the colour you shipped is not the colour you wrote. Compare
+    # what was declared against what came back.
+    clipped = []
+    for t in toks:
+        m = re.match(r"oklch\(\s*([\d.]+%?)\s+([\d.]+)\s+([\d.]+)", str(t["raw"]).strip().lower())
+        if not m:
+            continue
+        decl_L = float(m.group(1).rstrip("%")) / (100 if m.group(1).endswith("%") else 1)
+        decl_C = float(m.group(2))
+        if abs(decl_C - t["C"]) > 0.02 or abs(decl_L - t["L"]) > 0.03:
+            clipped.append(f"{t['name']} (declared L{decl_L:.2f}/C{decl_C:.3f}, "
+                           f"renders L{t['L']:.2f}/C{t['C']:.3f})")
+    if clipped:
+        say("CHECK", f"{len(clipped)} token(s) fall outside sRGB and get clipped",
+            "the colour on screen is not the colour in the file: "
+            + "; ".join(clipped[:4]) + ". Pull chroma down at the light and dark "
+            "ends of the ramp, or gate the extra chroma behind "
+            "@media (color-gamut: p3) with an sRGB base")
+
+    # --- Test: the absolutes ----------------------------------------------
+    for t in toks:
+        if t["rgb"] in ((0, 0, 0), (255, 255, 255)):
+            say("CHECK", f"`{t['name']}` is pure {'black' if t['rgb'][0] == 0 else 'white'}",
+                "pure black text halates for astigmatic readers and pure white "
+                "surfaces have nowhere to go for elevation")
+    if theme_name == "dark":
+        darkest = min(toks, key=lambda t: t["L"])
+        if darkest["L"] < 0.12:
+            say("CHECK", f"darkest surface `{darkest['name']}` is L {darkest['L']:.2f}",
+                "a dark theme's base wants L 0.15-0.20; below that, elevation has "
+                "nowhere to go and light text smears")
+
+    # --- verdicts ----------------------------------------------------------
+    print("\n" + "-" * 76)
+    if not verdicts:
+        print("COHERENT. Nothing in the palette contradicts itself.")
+        print("Contrast is a separate question: run without --harmony for the pairings.")
+        return 0
+    order = {"FAIL": 0, "CHECK": 1}
+    for level, headline, detail in sorted(verdicts, key=lambda v: order[v[0]]):
+        print(f"{level:<6} {headline}")
+        if detail:
+            for line in _wrap(detail, 68):
+                print(f"       {line}")
+    fails = sum(1 for v in verdicts if v[0] == "FAIL")
+    print("-" * 76)
+    print(f"{fails} fail, {len(verdicts) - fails} check. Every row is a candidate: "
+          "confirm it against\nthe rendered page before it becomes a finding, and "
+          "record the reason if you reject it.")
+    return 1 if fails else 0
+
+
+def _wrap(text, width):
+    words, line, out = text.split(), "", []
+    for w in words:
+        if len(line) + len(w) + 1 > width:
+            out.append(line)
+            line = w
+        else:
+            line = f"{line} {w}".strip()
+    if line:
+        out.append(line)
+    return out
 
 
 def check_palette(path, colors, theme_name="single"):
@@ -552,7 +817,7 @@ def check_palette(path, colors, theme_name="single"):
         unclassified = [k for k in colors if classify(k) == "other"]
         if unclassified:
             print(f"  {'unclassified:':<22} {', '.join(base_name(k) for k in unclassified[:12])}")
-            print("     (skipped — rename them by role, or check them with --pairs)")
+            print("     (skipped - rename them by role, or check them with --pairs)")
         if not g["certain"] and not g["inferred"]:
             print("\nNo checkable pairings. Name tokens by role (ink/body/muted on canvas/surface).")
             return 2
@@ -576,13 +841,13 @@ def check_palette(path, colors, theme_name="single"):
                       f"(needs {need}, Lc {apca_lc(fg, bg):3.0f})")
             return fails
 
-        print("\nPairings the naming makes explicit — these count:")
+        print("\nPairings the naming makes explicit - these count:")
         print("-" * 76)
         fails = run(g["certain"], True)
         print("-" * 76)
 
         if g["inferred"]:
-            print("\nPairings that MIGHT never occur on a real screen — verify before acting:")
+            print("\nPairings that MIGHT never occur on a real screen - verify before acting:")
             print("(a tinted or fill-only token may be forbidden as a text backdrop by house")
             print(" rule; check the project's own styling notes before calling any of these")
             print(" a defect. They are excluded from the pass/fail count on purpose.)")
@@ -591,7 +856,7 @@ def check_palette(path, colors, theme_name="single"):
             print("-" * 76)
 
         if fails:
-            print(f"\n{len(fails)} failing pairing(s) — fixes, hue held:\n")
+            print(f"\n{len(fails)} failing pairing(s) - fixes, hue held:\n")
             for t, s, r, need, fg, bg, kind in fails:
                 fix = suggest(fg, bg, need)
                 L0, C0, h0 = rgb_to_oklch(*fg)
@@ -601,13 +866,13 @@ def check_palette(path, colors, theme_name="single"):
                           f"{base_name(t)} to {to_hex(cand)} "
                           f"(oklch({L:.3f} {newC:.3f} {h0:.1f})) = {newr:.2f}:1")
                 else:
-                    print(f"  {base_name(t)} on {base_name(s)}: {r:.2f} — not reachable by "
+                    print(f"  {base_name(t)} on {base_name(s)}: {r:.2f} - not reachable by "
                           f"lightness alone; change the pairing")
             print("\nA palette that fails here is not a direction, it is a rewrite waiting to")
             print("happen: under this rubric a shipped AA failure caps Overall at C+.")
             return 1
         print("\nEvery explicit role pairing clears AA. NOT checked: text over images or")
-        print("gradients, translucent surfaces, disabled states, and dark-mode variants —")
+        print("gradients, translucent surfaces, disabled states, and dark-mode variants -")
         print("run the probe on the rendered page for those.")
         return 0
 
@@ -659,12 +924,37 @@ def selftest():
     if apca_lc(parse_color("#888"), parse_color("#888")) != 0:
         fails.append("  APCA equal colours nonzero")
 
+    # --harmony must call a coherent palette coherent and a broken one broken.
+    # A coherence checker that fires on good work gets muted, and then it is
+    # not a checker.
+    import contextlib
+    good = {"canvas": "oklch(0.99 0.004 60)", "ink": "oklch(0.22 0.008 60)",
+            "muted": "oklch(0.48 0.010 60)", "border": "oklch(0.86 0.008 60)",
+            "accent-300": "oklch(0.80 0.12 250)", "accent-500": "oklch(0.62 0.16 250)",
+            "accent-700": "oklch(0.45 0.13 250)", "danger": "oklch(0.55 0.17 27)",
+            "success": "oklch(0.68 0.15 150)", "warn": "oklch(0.75 0.15 80)"}
+    bad = dict(good)
+    bad["danger"] = "oklch(0.58 0.17 248)"          # collides with the accent
+    bad["accent-600"] = "oklch(0.615 0.16 250)"     # a near-duplicate ramp step
+    for name, palette, want in (("good", good, 0), ("bad", bad, 1)):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = harmony(palette, "<selftest>")
+        if rc != want:
+            fails.append(f"  --harmony on the {name} palette returned {rc}, expected {want}")
+        text = buf.getvalue()
+        if name == "bad" and "degrees from the accent" not in text:
+            fails.append("  --harmony missed the accent/danger hue collision")
+        if name == "bad" and "near-duplicate" not in text:
+            fails.append("  --harmony missed the near-duplicate ramp step")
+
     if fails:
         print("SELFTEST FAILED:")
         print("\n".join(fails))
         return 1
-    print(f"selftest ok — {len(cases)} known ratios, oklch round-trips, "
-          f"cross-syntax parsing, suggest() and APCA bounds all check out")
+    print(f"selftest ok: {len(cases)} known ratios, oklch round-trips, "
+          f"cross-syntax parsing, suggest(), APCA bounds and --harmony "
+          f"(coherent vs broken) all check out")
     return 0
 
 
