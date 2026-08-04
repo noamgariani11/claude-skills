@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# designer-dude static checks — the countable craft facts, read from source.
+# designer-dude static checks - the countable craft facts, read from source.
 #
 # Two halves:
-#   A. Micro-checks (1-7)  — the always-expected interaction details.
-#   B. Token audit (8-14)  — the countable claims the rubric leans on most
+#   A. Micro-checks (1-7)  - the always-expected interaction details.
+#   B. Token audit (8-14)  - the countable claims the rubric leans on most
 #                            ("the radius scale has 6 values", "spacing is
 #                            off the 4px base", "hexes are hardcoded past
 #                            the tokens"). Counting these by eye is where a
 #                            review gets a number wrong and loses the room.
-#   C. Tailwind health (15) — only on Tailwind projects. Pins the MAJOR
+#   C. Tailwind health (15) - only on Tailwind projects. Pins the MAJOR
 #                            VERSION first, because that decides whether
 #                            half the other hits are defects or correct
 #                            code: v3 syntax generates no CSS on a v4
@@ -95,6 +95,18 @@ fi
 CSS_INCLUDES=()
 for e in "${CSS_EXTS[@]:-}"; do [ -n "$e" ] && CSS_INCLUDES+=(--include="*.${e}"); done
 
+# A narrower set than EXTS: files that actually render markup. `.ts` and `.js`
+# are in EXTS because they carry class strings, but they are also where every
+# date fixture, county code and test constant lives -- and a check for
+# rendered copy that reads them produces pure noise. Section 16 uses this.
+MARKUP_INCLUDES=()
+for e in "${EXTS[@]:-}"; do
+  case "$e" in
+    ts|js) ;;
+    *) [ -n "$e" ] && MARKUP_INCLUDES+=(--include="*.${e}") ;;
+  esac
+done
+
 EXCLUDES=(--exclude-dir=node_modules --exclude-dir=.next --exclude-dir=dist
           --exclude-dir=build --exclude-dir=.git --exclude-dir=vendor
           --exclude-dir=coverage --exclude-dir=.svelte-kit --exclude-dir=.turbo
@@ -149,14 +161,27 @@ if [ ${#EXTS[@]} -gt 0 ]; then
   grep -rln "DropdownMenu\|Combobox\|Popover\|Listbox\|<details" \
     "${SRC_DIRS[@]}" "${INCLUDES[@]}" "${EXCLUDES[@]}" 2>/dev/null | head -"$MAX_LINES"
   echo
-  echo "JUDGEMENT REQUIRED — a native <select> is not automatically a defect."
+  echo "JUDGEMENT REQUIRED - a native <select> is not automatically a defect."
   echo "On mobile and with screen readers it often beats a custom listbox."
   echo "Flag it when it clashes with a heavily-styled surrounding form, or"
   echo "when the design needs option content a <select> cannot render"
   echo "(icons, two-line rows, grouping). Otherwise leave it alone and say"
   echo "why. Any custom replacement must be keyboard-navigable, focus-"
-  echo "trapped, labelled, and screen-reader announced — if the current"
+  echo "trapped, labelled, and screen-reader announced - if the current"
   echo "custom dropdown is NOT, that is the real finding."
+  echo
+  # The one select defect that IS mechanical: appearance:none removes the
+  # native chevron, and if nothing replaces it the control stops announcing
+  # itself as a control. scoring.md does not dock for choosing native; it
+  # docks for stripping the affordance and leaving the hole.
+  stripped=$(g "${INCLUDES[@]:-}" "${CSS_INCLUDES[@]:-}" \
+    -e "appearance-none" -e "appearance: *none" | grep -i "select" | head -10)
+  if [ -n "$stripped" ]; then
+    echo "Selects with the native chevron stripped:"; echo "$stripped"
+    echo "-> Each needs its OWN chevron plus enough right padding that a long"
+    echo "   option label never runs under it. Check in the browser; if a"
+    echo "   sibling svg supplies one, this is fine. components.md section 4."
+  fi
 fi
 
 # ---------- 3. scrollbars ----------
@@ -174,13 +199,31 @@ if [ ${#CSS_EXTS[@]} -gt 0 ] || [ ${#EXTS[@]} -gt 0 ]; then
   else
     echo "No scrollbar styling found."
     echo
-    echo "JUDGEMENT REQUIRED — this is a preference, not a defect. Custom"
+    echo "JUDGEMENT REQUIRED - this is a preference, not a defect. Custom"
     echo "scrollbars can reduce affordance and hit-area, and the OS default"
     echo "is what users know. Raise it as an optional polish item on a"
     echo "heavily-designed surface with a persistent scroll region. Never"
     echo "dock a full grade for it, and never make a thumb thinner than"
     echo "8px or lower-contrast than 3:1 against its track."
   fi
+  echo
+  # Three things in this area ARE defects, unlike an unstyled scrollbar.
+  suppressed=$(g "${CSS_INCLUDES[@]:-}" "${INCLUDES[@]:-}" \
+    -e "scrollbar-width: *none" -e "scrollbar-hide" \
+    -e "::-webkit-scrollbar *{ *display: *none")
+  if [ -n "$suppressed" ]; then
+    echo "SUPPRESSED scrollbars (a hidden scrollbar is NOT the same as an"
+    echo "unstyled one - it removes the only signal that more content exists):"
+    echo "$suppressed" | head -8
+    echo "-> Confirm each sits on a region the user must actually scroll."
+    echo "   On a carousel with its own arrows this is correct; on a scroll"
+    echo "   region it is a major finding."
+  fi
+  gutter=$(g "${CSS_INCLUDES[@]:-}" -e "scrollbar-gutter" | wc -l)
+  echo "scrollbar-gutter declarations: $gutter"
+  [ "$gutter" -eq 0 ] && echo "-> Without 'scrollbar-gutter: stable' the page shifts horizontally
+   between a short route and a tall one. Minor alone; major if it
+   moves a fixed header or a modal."
 fi
 
 # ---------- 4. icon hygiene ----------
@@ -191,7 +234,7 @@ if [ ${#EXTS[@]} -gt 0 ]; then
     -e "⚠" -e "🔒" -e "🔓" -e "🔔" -e "▼" -e "▲" | head -25
   echo
   echo "Only flag symbols acting as ICONS inside a button, link, badge, or"
-  echo "status indicator — replace those with a real icon component"
+  echo "status indicator - replace those with a real icon component"
   echo "(lucide-react, heroicons, phosphor, whatever the repo already uses;"
   echo "check package.json before recommending a library it does not have)."
   echo "Leave genuine typographic content alone: · separators, – en-dashes,"
@@ -212,13 +255,13 @@ if [ -n "$removed" ]; then
   paired=$(echo "$removed" | grep -c "ring-\|box-shadow\|shadow-\|outline-offset\|border-")
 
   echo "outline removed WITH a visible replacement on the same line: $paired"
-  echo "(that is the correct pattern — not a finding)"
+  echo "(that is the correct pattern - not a finding)"
   echo
   if [ -n "$bare" ]; then
     echo "outline removed with NO replacement visible on the line:"
     echo "$bare" | head -"$MAX_LINES"
     echo
-    echo "Confirm by tabbing in the browser before writing this up — the"
+    echo "Confirm by tabbing in the browser before writing this up - the"
     echo "replacement may live in a shared class or a parent rule. The probe"
     echo "(\`interaction.focusRing.invisible\`) tests this against computed styles."
     echo "A genuinely invisible focus ring is a WCAG 2.4.7 AA failure:"
@@ -234,7 +277,7 @@ echo
 echo -n "focus-visible declarations present: "
 g "${INCLUDES[@]:-}" "${CSS_INCLUDES[@]:-}" "focus-visible" | wc -l
 echo "(a codebase using :focus rather than :focus-visible will show a"
-echo " ring on mouse click too — worth a minor polish finding, not a fail)"
+echo " ring on mouse click too - worth a minor polish finding, not a fail)"
 
 # ---------- 6. reduced motion ----------
 section "6. prefers-reduced-motion"
@@ -295,7 +338,7 @@ if [ -n "$odd" ]; then
   echo "$odd" | awk '{v=$2; gsub("px","",v); if (v % 4 != 0 && v != 1 && v != 2) print "  " $0}' | head -12
   echo "(1px and 2px are legitimate hairlines/optical corrections, not drift.)"
 else
-  echo "No literal px spacing found — likely all on a token scale. Good sign."
+  echo "No literal px spacing found - likely all on a token scale. Good sign."
 fi
 
 # ---------- 10. type voice ----------
@@ -317,7 +360,7 @@ echo -n "count: "
 g "${INCLUDES[@]:-}" "${CSS_INCLUDES[@]:-}" -icE \
   "(font-family|font[A-Za-z]*: *\"|next/font|@font-face|--font-)[^;]*\b(Inter|Roboto|Poppins|Montserrat)\b" \
   | awk -F: '{s+=$NF} END {print s+0}'
-echo "(fine as the LAST entry in a fallback stack; never as the voice —"
+echo "(fine as the LAST entry in a fallback stack; never as the voice -"
 echo " check which position it holds before writing it up)"
 
 # ---------- 11. image dimensions and alt (CLS + a11y) ----------
@@ -363,7 +406,7 @@ if [ ${#EXTS[@]} -gt 0 ]; then
     HARD_FAIL_CANDIDATES=$((HARD_FAIL_CANDIDATES + 1))
     echo "$img_report" | grep "missing:.*alt" | head -10
   fi
-  echo "(unreserved dimensions are the classic CLS cause — a design failure,"
+  echo "(unreserved dimensions are the classic CLS cause - a design failure,"
   echo " scored under Interaction & Performance, not a separate perf ticket)"
 fi
 
@@ -389,19 +432,101 @@ for state in hover focus-visible active disabled loading empty error; do
   printf '  %-14s %s\n' "$state" "$(g "${INCLUDES[@]:-}" "${CSS_INCLUDES[@]:-}" -i "$pat" | wc -l)"
 done
 echo "A zero here is a real gap. A large number is not proof the state is"
-echo "DESIGNED — only that it exists. Confirm the designed ones in-browser."
+echo "DESIGNED - only that it exists. Confirm the designed ones in-browser."
 
 # ---------- 14. dark mode ----------
 section "14. Dark mode"
-dark=$(g "${INCLUDES[@]:-}" "${CSS_INCLUDES[@]:-}" -e "prefers-color-scheme" -e "dark:" -e "\[data-theme" | wc -l)
+# `dark:` needs a left boundary that is not a letter or a hyphen. A bare
+# "dark:" also matches the tail of `--surface-dark: #111`, which is a token
+# NAME, not a theme -- and reading that as "a dark mode exists" sends every
+# check below down the wrong branch.
+dark=$(g "${INCLUDES[@]:-}" "${CSS_INCLUDES[@]:-}" -E "prefers-color-scheme|(^|[^-a-zA-Z])dark:|\[data-theme" | wc -l)
 echo "dark-mode references: $dark"
 if [ "$dark" -eq 0 ]; then
   echo "-> No dark mode. Only a finding if the product promises one or the"
   echo "   audience expects one (see the 'does NOT dock for' list)."
+  # A half-built one is a different answer from a deliberate absence, and the
+  # difference is a grep away. Orphans mean someone started and stopped.
+  orphan=$(g "${CSS_INCLUDES[@]:-}" "${INCLUDES[@]:-}" -e "\-\-[a-z-]*dark" -e "dark:bg-" -e "dark:text-" | wc -l)
+  if [ "$orphan" -gt 0 ]; then
+    echo "-> ...but there are $orphan orphaned dark-theme references with"
+    echo "   nothing keying them. A half-built dark mode IS a trigger to build"
+    echo "   one, and the abandoned tokens are where to start."
+    echo "   color.md section 5a, 'when to build one'."
+  fi
 else
-  echo "Dark mode exists — grade whether it was DESIGNED or inverted:"
+  echo "Dark mode exists - grade whether it was DESIGNED or inverted:"
   echo "check for a separate dark palette (warm neutrals, reduced accent"
   echo "saturation, softer elevation) rather than the same hexes flipped."
+  echo
+  # The single highest value-per-character line in this whole script.
+  cs=$(g "${CSS_INCLUDES[@]:-}" "${INCLUDES[@]:-}" -e "color-scheme" | wc -l)
+  echo "color-scheme declarations: $cs"
+  if [ "$cs" -eq 0 ]; then
+    # NOT a WCAG hard-fail: it is a craft/major finding. Counting it as one
+    # would trip the C+ cap on a product with no accessibility failure, and a
+    # cap applied for the wrong reason is worse than no cap.
+    echo "-> A dark theme with no 'color-scheme' means the browser still draws"
+    echo "   its OWN chrome light: scrollbars, the <select> option popup,"
+    echo "   autofill backgrounds, date pickers, spin buttons and the caret."
+    echo "   None of that appears in a screenshot, which is why it survives"
+    echo "   every review. Fix: ':root { color-scheme: light dark }' (or"
+    echo "   'dark' on the dark theme). One line, widest blast radius here."
+    echo "   The probe confirms it in-browser as chrome.darkSurfaceWithoutColorScheme."
+  fi
+  # -- can anyone actually reach it? -----------------------------------
+  #
+  # The theme can be perfect and still be unreachable. Keying it to the OS
+  # setting alone is the default every framework tutorial ships, so it is
+  # common, and it never shows up in a screenshot of either theme.
+  echo
+  # CSS files only, and only where it opens a MEDIA BLOCK. A `matchMedia(
+  # '(prefers-color-scheme: dark)')` call in a switcher is the CORRECT pattern
+  # -- that is how the system preference becomes the initial value -- and
+  # counting it here turned a right implementation into a two-sources-of-truth
+  # finding on the first repo this ran against.
+  media_keyed=$(g "${CSS_INCLUDES[@]:-}" -E "@media[^{]*prefers-color-scheme" | wc -l)
+  attr_keyed=$(g "${CSS_INCLUDES[@]:-}" "${INCLUDES[@]:-}" -e "\[data-theme" -e "\.dark\b" -e "data-mode" | wc -l)
+  switcher=$(g "${INCLUDES[@]:-}" -il -e "toggletheme" -e "theme-toggle" -e "themetoggle" \
+                -e "setTheme" -e "useTheme" -e "next-themes" | wc -l)
+  echo "prefers-color-scheme media blocks: $media_keyed"
+  echo "class/attribute-keyed refs: $attr_keyed"
+  echo "files that look like a theme switcher: $switcher"
+  if [ "$switcher" -eq 0 ] && [ "$attr_keyed" -eq 0 ]; then
+    echo "-> Dark theme reachable ONLY by changing an OS setting. Nobody can"
+    echo "   pick the other theme from the page: not the visitor reading in"
+    echo "   sunlight, not the one whose laptop flipped at sunset. MAJOR"
+    echo "   finding (Colour). The tokens already exist -- the fix is rekeying"
+    echo "   them to an attribute and adding the control. color.md section 5a."
+  elif [ "$switcher" -eq 0 ] && [ "$attr_keyed" -gt 0 ]; then
+    echo "-> Attribute-keyed tokens but no switcher found by name. Confirm"
+    echo "   in-browser before reporting: the control may be named something"
+    echo "   this grep does not know."
+  fi
+  if [ "$media_keyed" -gt 0 ] && [ "$attr_keyed" -gt 0 ]; then
+    echo "-> Both a media BLOCK and an attribute key the theme. Read both"
+    echo "   before writing anything: if the token list is written twice, that"
+    echo "   is two sources of truth and they will drift. A media block holding"
+    echo "   only a couple of overrides the attribute cannot express is fine."
+  fi
+
+  # A switcher that resolves the theme after paint flashes the wrong theme on
+  # every cold load, which is worse than shipping no dark mode at all.
+  if [ "$switcher" -gt 0 ]; then
+    prepaint=$(g "${INCLUDES[@]:-}" -l -e "dangerouslySetInnerHTML" -e "beforeInteractive" -e "documentElement.dataset.theme" \
+                  -e "documentElement.classList.add" 2>/dev/null | wc -l)
+    if [ "$prepaint" -eq 0 ]; then
+      echo "-> A switcher exists but nothing looks like it sets the theme before"
+      echo "   first paint. Load a page cold and watch: a light flash that snaps"
+      echo "   to dark is the finding. Fix is a synchronous inline script in"
+      echo "   <head>, not an effect. color.md section 5a."
+    fi
+  fi
+  echo
+
+  inverted=$(g "${CSS_INCLUDES[@]:-}" "${INCLUDES[@]:-}" -e "filter: *invert" -e "invert(1)" | wc -l)
+  [ "$inverted" -gt 0 ] && echo "-> $inverted 'filter: invert' hits. Inverting to make a dark theme
+   breaks every image and inverts every shadow. That is the finding."
 fi
 
 # ---------- 15. Tailwind system health ----------
@@ -542,6 +667,79 @@ else
   fi
 fi
 
+# ---------- 16. native tooltips and the copy tells ----------
+#
+# Two layers a CSS review never looks at: the OS-drawn tooltip, and the shape
+# of the words. Both are cheap to grep and both are what a reader clocks first.
+section "16. Native tooltips and copy tells"
+if [ ${#EXTS[@]} -gt 0 ]; then
+  # `title` renders the OS box: slow, unstyled, invisible on touch, unreachable
+  # by keyboard, and it vanishes while you are reading it.
+  #
+  # PRECISION NOTE, learned the expensive way: a naive grep for `title=` on a
+  # React codebase returns hundreds of hits, and nearly all of them are a PROP
+  # named title on a custom component (<LegalSection title="...">, <PageHeader
+  # title="Trash">). Those render an <h1>, not an OS tooltip. Requiring a
+  # LOWERCASE tag name is what separates the HTML attribute from the prop, and
+  # it takes this section from ~500 candidates to the handful worth opening.
+  titles=$(g "${MARKUP_INCLUDES[@]:-}" -nE "<[a-z][a-z0-9-]*[^>]*[[:space:]]title=" \
+    | grep -vE "<(iframe|title|svg)" | head -12)
+  tcount=$(g "${MARKUP_INCLUDES[@]:-}" -nE "<[a-z][a-z0-9-]*[^>]*[[:space:]]title=" \
+    | grep -cvE "<(iframe|title|svg)" || true)
+  echo "native title-attribute candidates: ${tcount:-0}"
+  echo "  (props named 'title' on capitalised components are excluded - those"
+  echo "   render a heading, not an OS tooltip)"
+  if [ -n "$titles" ]; then
+    echo "$titles"
+    echo "-> Open the top three. If the black OS box is carrying information"
+    echo "   nothing else carries, that is the finding (SC 1.4.13 wants it"
+    echo "   hoverable, dismissable and persistent). components.md section 6."
+    echo "   A title repeating the element's own visible text is redundant"
+    echo "   markup, not a defect. The probe excludes that case already."
+    echo "   NOT a finding either: \`truncate\` (or text-overflow: ellipsis)"
+    echo "   paired with title={fullValue}. That is the correct, conventional"
+    echo "   way to expose text the layout had to cut, and the alternative"
+    echo "   costs more than it buys. Judge the ones carrying NEW information."
+  fi
+  echo
+  # Decorative zero-padded ordinals, in RENDERED text only. `"01"` in a lib
+  # file is a county code, a month, or a test fixture; `>01<` in JSX is on the
+  # screen. The probe additionally requires a repeat under a shared parent.
+  steps=$(g "${MARKUP_INCLUDES[@]:-}" -nE ">[[:space:]]*0[1-9][[:space:]]*<" | head -8)
+  scount=$(g "${MARKUP_INCLUDES[@]:-}" -oE ">[[:space:]]*0[1-9][[:space:]]*<" | wc -l)
+  echo "zero-padded ordinals in rendered markup: $scount"
+  if [ "$scount" -ge 2 ]; then
+    echo "$steps"
+    echo "-> Two or more suggests 01/02/03 section ornament rather than data."
+    echo "   Confirm in the browser. A lone padded number is a unit number, a"
+    echo "   version or a jersey, and is not a finding."
+  fi
+  echo
+  # Em dashes in authored copy. A RATE, not a count - one is a writer. Counted
+  # over markup only, and reported against the repo's own convention because
+  # several repos ban them outright.
+  emd=$(g "${MARKUP_INCLUDES[@]:-}" -o "—" | wc -l)
+  echo "em dashes in rendered markup: $emd"
+  if [ "$emd" -ge 8 ]; then
+    echo "-> At this density it reads as machine-written. Rewrite most with a"
+    echo "   comma, a colon or a full stop; keep the one doing real work."
+  fi
+  if grep -qs "em dash\|em-dash" CLAUDE.md 2>/dev/null; then
+    echo "-> This repo's CLAUDE.md has a rule about em dashes. Read it before"
+    echo "   writing either the fix or the commit message."
+  fi
+  # Sentence frames, excluding code comments -- "not just advisory" in a
+  # `// ...` line is a developer explaining themselves, not product copy.
+  frames=$(g "${MARKUP_INCLUDES[@]:-}" -inE \
+    "not just (a|an|the) [a-z]+,? (but|it)|isn'?t just (a|an|the)|more than just (a|an|the)|in today'?s [a-z-]+ world" \
+    | grep -vE ":[[:space:]]*(//|\*|/\*|#)" | head -6)
+  if [ -n "$frames" ]; then
+    echo
+    echo "LLM sentence frames in rendered copy:"; echo "$frames"
+    echo "-> 'Not just X, but Y' always survives being cut down to Y."
+  fi
+fi
+
 # ---------- summary ----------
 echo
 echo "== summary =="
@@ -549,7 +747,7 @@ echo "files in scope:            $TOTAL_FILES"
 echo "WCAG hard-fail candidates: $HARD_FAIL_CANDIDATES"
 echo
 echo "Every hit above is a CANDIDATE. Confirm in the browser before it"
-echo "becomes a FINDING — a grep is evidence of a pattern, not of a defect."
+echo "becomes a FINDING - a grep is evidence of a pattern, not of a defect."
 echo "The static layer cannot see hierarchy, contrast as rendered, or"
 echo "anything about how the page actually looks. Run probe.js for that."
 
